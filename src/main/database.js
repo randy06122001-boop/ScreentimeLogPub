@@ -88,7 +88,6 @@ class ScreenTimeDatabase {
     return this.generateChecksum(data) === session.checksum;
   }
 
-  // Session Management
   startSession() {
     const now = new Date().toISOString();
     const result = this.db.prepare(`
@@ -165,7 +164,6 @@ class ScreenTimeDatabase {
     `).run(date, stats.total_seconds, stats.session_count, stats.longest_session, stats.first_activity, stats.last_activity);
   }
 
-  // Query Methods
   getSessions(startDate, endDate) {
     return this.db.prepare(`
       SELECT * FROM sessions 
@@ -176,4 +174,108 @@ class ScreenTimeDatabase {
 
   getDailySummary(date) {
     return this.db.prepare(`
-      SELECT * FROM daily_
+      SELECT * FROM daily_summaries WHERE date = ?
+    `).get(date);
+  }
+
+  getWeeklySummary(startDate) {
+    const endDate = new Date(startDate);
+    endDate.setDate(endDate.getDate() + 7);
+    const endDateStr = endDate.toISOString().split('T')[0];
+
+    return this.db.prepare(`
+      SELECT * FROM daily_summaries 
+      WHERE date BETWEEN ? AND ?
+      ORDER BY date DESC
+    `).all(startDate, endDateStr);
+  }
+
+  getMonthlySummary(year, month) {
+    return this.db.prepare(`
+      SELECT * FROM daily_summaries 
+      WHERE strftime('%Y', date) = ? AND strftime('%m', date) = ?
+      ORDER BY date DESC
+    `).all(String(year), String(month).padStart(2, '0'));
+  }
+
+  getSessionById(sessionId) {
+    return this.db.prepare(`
+      SELECT * FROM sessions WHERE id = ?
+    `).get(sessionId);
+  }
+
+  getSettings() {
+    return this.db.prepare(`
+      SELECT key, value FROM settings
+    `).all();
+  }
+
+  saveSettings(settings) {
+    const update = this.db.prepare(`
+      UPDATE settings SET value = ? WHERE key = ?
+    `);
+    const insert = this.db.prepare(`
+      INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)
+    `);
+
+    for (const [key, value] of Object.entries(settings)) {
+      update.run(String(value), key);
+      insert.run(String(value), key);
+    }
+  }
+
+  getSummaryForRange(startDate, endDate) {
+    return this.db.prepare(`
+      SELECT 
+        COUNT(*) as session_count,
+        COALESCE(SUM(duration_seconds), 0) as total_seconds,
+        COALESCE(MAX(duration_seconds), 0) as longest_session,
+        MIN(start_time) as first_activity,
+        MAX(end_time) as last_activity
+      FROM sessions 
+      WHERE date(start_time) BETWEEN ? AND ?
+    `).get(startDate, endDate);
+  }
+
+  clearOldData(days) {
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+    const cutoffDateString = cutoffDate.toISOString().split('T')[0];
+
+    this.db.prepare(`
+      DELETE FROM sessions WHERE date(start_time) < ?
+    `).run(cutoffDateString);
+
+    this.db.prepare(`
+      DELETE FROM daily_summaries WHERE date < ?
+    `).run(cutoffDateString);
+
+    return { success: true };
+  }
+
+  getOverallStats() {
+    const stats = this.db.prepare(`
+      SELECT 
+        COUNT(*) as session_count,
+        COALESCE(SUM(duration_seconds), 0) as total_seconds,
+        COALESCE(MAX(duration_seconds), 0) as longest_session,
+        MIN(start_time) as first_activity,
+        MAX(end_time) as last_activity
+      FROM sessions 
+    `).get();
+
+    return {
+      sessionCount: stats.session_count,
+      totalSeconds: stats.total_seconds,
+      longestSession: stats.longest_session,
+      firstActivity: stats.first_activity,
+      lastActivity: stats.last_activity
+    };
+  }
+
+  close() {
+    this.db.close();
+  }
+}
+
+module.exports = ScreenTimeDatabase;

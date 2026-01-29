@@ -86,7 +86,16 @@ function createTray() {
 function setupIpcHandlers() {
   // Settings handlers
   ipcMain.handle('get-settings', () => {
-    return database.getSettings();
+    const settings = database.getSettings();
+    const settingsObj = {};
+    settings.forEach(setting => {
+      let value = setting.value;
+      if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      else if (!isNaN(value) && value !== '') value = Number(value);
+      settingsObj[setting.key] = value;
+    });
+    return settingsObj;
   });
 
   ipcMain.handle('save-settings', (event, settings) => {
@@ -137,7 +146,8 @@ function setupIpcHandlers() {
 
   // Data management
   ipcMain.handle('clear-data', (event, { olderThan }) => {
-    return database.clearOldData(olderThan);
+    const result = database.clearOldData(olderThan);
+    return result;
   });
 
   ipcMain.handle('get-stats', () => {
