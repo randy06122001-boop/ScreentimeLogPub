@@ -1,78 +1,197 @@
-src/main/main.js
+// ============================================
+// FILE: package.json
+// ============================================
+{
+  "name": "screen-time-tracker",
+  "version": "1.0.0",
+  "description": "A comprehensive desktop screen time tracker application",
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:renderer\" \"wait-on http://localhost:3000 && electron .\"",
+    "dev:renderer": "vite",
+    "build": "vite build && electron-builder",
+    "build:win": "vite build && electron-builder --win",
+    "build:mac": "vite build && electron-builder --mac",
+    "build:linux": "vite build && electron-builder --linux"
+  },
+  "dependencies": {
+    "better-sqlite3": "^9.4.3",
+    "desktop-idle": "^1.3.0",
+    "electron-store": "^8.1.0",
+    "auto-launch": "^5.0.6",
+    "jspdf": "^2.5.1",
+    "jspdf-autotable": "^3.8.1",
+    "csv-writer": "^1.6.0",
+    "date-fns": "^3.3.1"
+  },
+  "devDependencies": {
+    "electron": "^28.2.0",
+    "electron-builder": "^24.9.1",
+    "concurrently": "^8.2.2",
+    "wait-on": "^7.2.0",
+    "vite": "^5.1.0",
+    "@vitejs/plugin-react": "^4.2.1",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "recharts": "^2.12.0",
+    "tailwindcss": "^3.4.1",
+    "autoprefixer": "^10.4.17",
+    "postcss": "^8.4.35"
+  },
+  "build": {
+    "appId": "com.screentime.tracker",
+    "productName": "Screen Time Tracker",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "node_modules/**/*"
+    ],
+    "mac": {
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "icon": "assets/icon.png"
+    }
+  }
+}
 
+// ============================================
+// FILE: src/main/main.js
+// ============================================
 const { app, BrowserWindow, ipcMain, Tray, Menu, nativeImage } = require('electron');
 const path = require('path');
 const AutoLaunch = require('auto-launch');
-const Store = require('electron-store');
 const Database = require('./database');
 const ActivityMonitor = require('./activityMonitor');
 const ExportService = require('./exportService');
+const Store = require('electron-store');
 
-let mainWindow;
-let tray;
-let activityMonitor;
-let database;
-let exportService;
-const store = new Store();
+/**
+ * @typedef {Object} AppState
+ * @property {BrowserWindow|null} mainWindow - Main application window
+ * @property {Tray|null} tray - System tray instance
+ * @property {Database|null} database - Database instance
+ * @property {ActivityMonitor|null} activityMonitor - Activity monitor instance
+ * @property {ExportService|null} exportService - Export service instance
+ * @property {Store|null} store - Electron store for settings
+ * @property {AutoLaunch|null} autoLauncher - Auto-launch instance
+ */
 
-const autoLauncher = new AutoLaunch({
-  name: 'Screen Time Tracker',
-  path: app.getPath('exe'),
-});
+/** @type {AppState} */
+const appState = {
+  mainWindow: null,
+  tray: null,
+  database: null,
+  activityMonitor: null,
+  exportService: null,
+  store: null,
+  autoLauncher: null
+};
 
+/**
+ * Creates the main application window
+ * @returns {void}
+ */
 function createWindow() {
-  mainWindow = new BrowserWindow({
+  appState.mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    minWidth: 900,
+    minWidth: 800,
     minHeight: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
-      nodeIntegration: false,
+      nodeIntegration: false
     },
     icon: path.join(__dirname, '../../assets/icon.png'),
     show: false,
+    frame: true,
+    titleBarStyle: 'default'
   });
 
-  mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
+  // Load the renderer
+  if (process.env.NODE_ENV === 'development') {
+    appState.mainWindow.loadURL('http://localhost:3000');
+    appState.mainWindow.webContents.openDevTools();
+  } else {
+    appState.mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
+  }
 
-  mainWindow.once('ready-to-show', () => {
-    mainWindow.show();
+  appState.mainWindow.once('ready-to-show', () => {
+    appState.mainWindow.show();
   });
 
-  mainWindow.on('close', (event) => {
+  // Minimize to tray instead of closing
+  appState.mainWindow.on('close', (event) => {
     if (!app.isQuitting) {
       event.preventDefault();
-      mainWindow.hide();
+      appState.mainWindow.hide();
     }
+  });
+
+  appState.mainWindow.on('closed', () => {
+    appState.mainWindow = null;
   });
 }
 
+/**
+ * Creates the system tray with context menu
+ * @returns {void}
+ */
 function createTray() {
-  const icon = nativeImage.createFromPath(path.join(__dirname, '../../assets/icon.png'));
-  tray = new Tray(icon.resize({ width: 16, height: 16 }));
-
+  const iconPath = path.join(__dirname, '../../assets/tray-icon.png');
+  const trayIcon = nativeImage.createFromPath(iconPath);
+  
+  appState.tray = new Tray(trayIcon.resize({ width: 16, height: 16 }));
+  
   const contextMenu = Menu.buildFromTemplate([
-    { 
-      label: 'Open Dashboard', 
-      click: () => mainWindow.show() 
+    {
+      label: 'Open Screen Time Tracker',
+      click: () => {
+        if (appState.mainWindow) {
+          appState.mainWindow.show();
+          appState.mainWindow.focus();
+        }
+      }
     },
-    { 
-      label: 'Pause Tracking', 
+    {
+      label: 'Current Session',
+      enabled: false,
+      id: 'current-session'
+    },
+    { type: 'separator' },
+    {
+      label: 'Pause Tracking',
       type: 'checkbox',
       checked: false,
       click: (menuItem) => {
         if (menuItem.checked) {
-          activityMonitor.pause();
+          appState.activityMonitor.pause();
         } else {
-          activityMonitor.resume();
+          appState.activityMonitor.resume();
+        }
+        updateTrayMenu();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Settings',
+      click: () => {
+        if (appState.mainWindow) {
+          appState.mainWindow.show();
+          appState.mainWindow.webContents.send('navigate', 'settings');
         }
       }
     },
     { type: 'separator' },
-    { 
-      label: 'Quit', 
+    {
+      label: 'Quit',
       click: () => {
         app.isQuitting = true;
         app.quit();
@@ -80,98 +199,1522 @@ function createTray() {
     }
   ]);
 
-  tray.setToolTip('Screen Time Tracker');
-  tray.setContextMenu(contextMenu);
-  tray.on('double-click', () => mainWindow.show());
+  appState.tray.setContextMenu(contextMenu);
+  appState.tray.setToolTip('Screen Time Tracker');
+
+  appState.tray.on('double-click', () => {
+    if (appState.mainWindow) {
+      appState.mainWindow.show();
+      appState.mainWindow.focus();
+    }
+  });
 }
 
-function setupIpcHandlers() {
-  // Settings handlers
-  ipcMain.handle('get-settings', () => {
-    return database.getSettings();
-  });
+/**
+ * Updates the tray menu with current session information
+ * @returns {void}
+ */
+function updateTrayMenu() {
+  if (!appState.tray) return;
 
-  ipcMain.handle('save-settings', (event, settings) => {
-    database.saveSettings(settings);
-    
-    if (settings.autoLaunch) {
-      autoLauncher.enable();
+  const currentSession = appState.activityMonitor.getCurrentSession();
+  const isPaused = appState.activityMonitor.isPaused();
+
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: 'Open Screen Time Tracker',
+      click: () => {
+        if (appState.mainWindow) {
+          appState.mainWindow.show();
+          appState.mainWindow.focus();
+        }
+      }
+    },
+    {
+      label: currentSession 
+        ? `Current Session: ${formatDuration(currentSession.duration)}`
+        : 'No Active Session',
+      enabled: false
+    },
+    { type: 'separator' },
+    {
+      label: isPaused ? 'Resume Tracking' : 'Pause Tracking',
+      click: () => {
+        if (isPaused) {
+          appState.activityMonitor.resume();
+        } else {
+          appState.activityMonitor.pause();
+        }
+        updateTrayMenu();
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Settings',
+      click: () => {
+        if (appState.mainWindow) {
+          appState.mainWindow.show();
+          appState.mainWindow.webContents.send('navigate', 'settings');
+        }
+      }
+    },
+    { type: 'separator' },
+    {
+      label: 'Quit',
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      }
+    }
+  ]);
+
+  appState.tray.setContextMenu(contextMenu);
+}
+
+/**
+ * Formats duration in seconds to human-readable string
+ * @param {number} seconds - Duration in seconds
+ * @returns {string} Formatted duration string
+ */
+function formatDuration(seconds) {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  } else if (minutes > 0) {
+    return `${minutes}m ${secs}s`;
+  }
+  return `${secs}s`;
+}
+
+/**
+ * Initializes the application services
+ * @returns {Promise<void>}
+ */
+async function initializeServices() {
+  try {
+    // Initialize store for settings
+    appState.store = new Store({
+      defaults: {
+        idleThreshold: 300,
+        minSessionDuration: 60,
+        autoStart: false,
+        darkMode: false,
+        dataRetentionDays: 365,
+        scheduledPauses: []
+      }
+    });
+
+    // Initialize database
+    const dbPath = path.join(app.getPath('userData'), 'screentime.db');
+    appState.database = new Database(dbPath);
+
+    // Initialize export service
+    appState.exportService = new ExportService(appState.database);
+
+    // Initialize activity monitor
+    appState.activityMonitor = new ActivityMonitor({
+      database: appState.database,
+      store: appState.store,
+      onSessionUpdate: (session) => {
+        if (appState.mainWindow) {
+          appState.mainWindow.webContents.send('session-update', session);
+        }
+        updateTrayMenu();
+      },
+      onSessionEnd: (session) => {
+        if (appState.mainWindow) {
+          appState.mainWindow.webContents.send('session-ended', session);
+        }
+        updateTrayMenu();
+      }
+    });
+
+    // Initialize auto-launcher
+    appState.autoLauncher = new AutoLaunch({
+      name: 'Screen Time Tracker',
+      path: app.getPath('exe')
+    });
+
+    // Set auto-launch based on settings
+    const autoStart = appState.store.get('autoStart');
+    if (autoStart) {
+      await appState.autoLauncher.enable();
     } else {
-      autoLauncher.disable();
+      await appState.autoLauncher.disable();
     }
-    
-    activityMonitor.updateSettings(settings);
-    return { success: true };
+
+    // Start activity monitoring
+    appState.activityMonitor.start();
+
+    console.log('All services initialized successfully');
+  } catch (error) {
+    console.error('Failed to initialize services:', error);
+    throw error;
+  }
+}
+
+/**
+ * Sets up IPC handlers for renderer communication
+ * @returns {void}
+ */
+function setupIPCHandlers() {
+  // Get today's sessions
+  ipcMain.handle('get-today-sessions', async () => {
+    try {
+      return appState.database.getTodaySessions();
+    } catch (error) {
+      console.error('Error getting today sessions:', error);
+      throw error;
+    }
   });
 
-  // Session data handlers
-  ipcMain.handle('get-sessions', (event, { startDate, endDate }) => {
-    return database.getSessions(startDate, endDate);
+  // Get sessions by date range
+  ipcMain.handle('get-sessions-by-range', async (event, { startDate, endDate }) => {
+    try {
+      return appState.database.getSessionsByDateRange(startDate, endDate);
+    } catch (error) {
+      console.error('Error getting sessions by range:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('get-daily-summary', (event, date) => {
-    return database.getDailySummary(date);
+  // Get daily summaries
+  ipcMain.handle('get-daily-summaries', async (event, { startDate, endDate }) => {
+    try {
+      return appState.database.getDailySummaries(startDate, endDate);
+    } catch (error) {
+      console.error('Error getting daily summaries:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('get-weekly-summary', (event, startDate) => {
-    return database.getWeeklySummary(startDate);
+  // Get current session
+  ipcMain.handle('get-current-session', async () => {
+    try {
+      return appState.activityMonitor.getCurrentSession();
+    } catch (error) {
+      console.error('Error getting current session:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('get-monthly-summary', (event, year, month) => {
-    return database.getMonthlySummary(year, month);
+  // Get settings
+  ipcMain.handle('get-settings', async () => {
+    try {
+      return {
+        idleThreshold: appState.store.get('idleThreshold'),
+        minSessionDuration: appState.store.get('minSessionDuration'),
+        autoStart: appState.store.get('autoStart'),
+        darkMode: appState.store.get('darkMode'),
+        dataRetentionDays: appState.store.get('dataRetentionDays'),
+        scheduledPauses: appState.store.get('scheduledPauses')
+      };
+    } catch (error) {
+      console.error('Error getting settings:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('get-current-session', () => {
-    return activityMonitor.getCurrentSession();
+  // Update settings
+  ipcMain.handle('update-settings', async (event, settings) => {
+    try {
+      Object.entries(settings).forEach(([key, value]) => {
+        appState.store.set(key, value);
+      });
+
+      // Update auto-launch if changed
+      if ('autoStart' in settings) {
+        if (settings.autoStart) {
+          await appState.autoLauncher.enable();
+        } else {
+          await appState.autoLauncher.disable();
+        }
+      }
+
+      // Update activity monitor settings
+      appState.activityMonitor.updateSettings({
+        idleThreshold: appState.store.get('idleThreshold'),
+        minSessionDuration: appState.store.get('minSessionDuration'),
+        scheduledPauses: appState.store.get('scheduledPauses')
+      });
+
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating settings:', error);
+      throw error;
+    }
   });
 
-  // Export handlers
-  ipcMain.handle('export-pdf', (event, { startDate, endDate, filename }) => {
-    const sessions = database.getSessions(startDate, endDate);
-    const summary = database.getSummaryForRange(startDate, endDate);
-    return exportService.exportToPDF(sessions, summary, filename);
+  // Pause/Resume tracking
+  ipcMain.handle('toggle-tracking', async (event, pause) => {
+    try {
+      if (pause) {
+        appState.activityMonitor.pause();
+      } else {
+        appState.activityMonitor.resume();
+      }
+      updateTrayMenu();
+      return { success: true, isPaused: appState.activityMonitor.isPaused() };
+    } catch (error) {
+      console.error('Error toggling tracking:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('export-csv', (event, { startDate, endDate, filename }) => {
-    const sessions = database.getSessions(startDate, endDate);
-    return exportService.exportToCSV(sessions, filename);
+  // Get tracking status
+  ipcMain.handle('get-tracking-status', async () => {
+    try {
+      return {
+        isPaused: appState.activityMonitor.isPaused(),
+        isMonitoring: appState.activityMonitor.isMonitoring()
+      };
+    } catch (error) {
+      console.error('Error getting tracking status:', error);
+      throw error;
+    }
   });
 
-  // Data management
-  ipcMain.handle('clear-data', (event, { olderThan }) => {
-    return database.clearOldData(olderThan);
+  // Export to PDF
+  ipcMain.handle('export-pdf', async (event, { startDate, endDate, filePath }) => {
+    try {
+      await appState.exportService.exportToPDF(startDate, endDate, filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('Error exporting to PDF:', error);
+      throw error;
+    }
   });
 
-  ipcMain.handle('get-stats', () => {
-    return database.getOverallStats();
+  // Export to CSV
+  ipcMain.handle('export-csv', async (event, { startDate, endDate, filePath }) => {
+    try {
+      await appState.exportService.exportToCSV(startDate, endDate, filePath);
+      return { success: true };
+    } catch (error) {
+      console.error('Error exporting to CSV:', error);
+      throw error;
+    }
+  });
+
+  // Get statistics
+  ipcMain.handle('get-statistics', async (event, { period }) => {
+    try {
+      return appState.database.getStatistics(period);
+    } catch (error) {
+      console.error('Error getting statistics:', error);
+      throw error;
+    }
+  });
+
+  // Delete old data
+  ipcMain.handle('delete-old-data', async (event, { days }) => {
+    try {
+      const deletedCount = appState.database.deleteOldData(days);
+      return { success: true, deletedCount };
+    } catch (error) {
+      console.error('Error deleting old data:', error);
+      throw error;
+    }
+  });
+
+  // Show save dialog
+  ipcMain.handle('show-save-dialog', async (event, { defaultPath, filters }) => {
+    const { dialog } = require('electron');
+    const result = await dialog.showSaveDialog(appState.mainWindow, {
+      defaultPath,
+      filters
+    });
+    return result;
   });
 }
 
-app.whenReady().then(() => {
-  database = new Database(app.getPath('userData'));
-  exportService = new ExportService(app.getPath('documents'));
-  activityMonitor = new ActivityMonitor(database, store);
+// App lifecycle events
+app.whenReady().then(async () => {
+  try {
+    await initializeServices();
+    createWindow();
+    createTray();
+    setupIPCHandlers();
 
-  createWindow();
-  createTray();
-  setupIpcHandlers();
-
-  activityMonitor.start();
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
-    }
-  });
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) {
+        createWindow();
+      }
+    });
+  } catch (error) {
+    console.error('Failed to start application:', error);
+    app.quit();
+  }
 });
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
-    // Keep running in background
+    // Don't quit, keep running in tray
   }
 });
 
 app.on('before-quit', () => {
-  activityMonitor.stop();
-  database.close();
+  app.isQuitting = true;
+  if (appState.activityMonitor) {
+    appState.activityMonitor.stop();
+  }
+  if (appState.database) {
+    appState.database.close();
+  }
 });
+
+// ============================================
+// FILE: src/main/preload.js
+// ============================================
+const { contextBridge, ipcRenderer } = require('electron');
+
+/**
+ * Exposes secure API to renderer process
+ */
+contextBridge.exposeInMainWorld('electronAPI', {
+  // Session management
+  getTodaySessions: () => ipcRenderer.invoke('get-today-sessions'),
+  getSessionsByRange: (startDate, endDate) => 
+    ipcRenderer.invoke('get-sessions-by-range', { startDate, endDate }),
+  getDailySummaries: (startDate, endDate) => 
+    ipcRenderer.invoke('get-daily-summaries', { startDate, endDate }),
+  getCurrentSession: () => ipcRenderer.invoke('get-current-session'),
+  
+  // Settings
+  getSettings: () => ipcRenderer.invoke('get-settings'),
+  updateSettings: (settings) => ipcRenderer.invoke('update-settings', settings),
+  
+  // Tracking control
+  toggleTracking: (pause) => ipcRenderer.invoke('toggle-tracking', pause),
+  getTrackingStatus: () => ipcRenderer.invoke('get-tracking-status'),
+  
+  // Export
+  exportPDF: (startDate, endDate, filePath) => 
+    ipcRenderer.invoke('export-pdf', { startDate, endDate, filePath }),
+  exportCSV: (startDate, endDate, filePath) => 
+    ipcRenderer.invoke('export-csv', { startDate, endDate, filePath }),
+  showSaveDialog: (options) => ipcRenderer.invoke('show-save-dialog', options),
+  
+  // Statistics
+  getStatistics: (period) => ipcRenderer.invoke('get-statistics', { period }),
+  
+  // Data management
+  deleteOldData: (days) => ipcRenderer.invoke('delete-old-data', { days }),
+  
+  // Event listeners
+  onSessionUpdate: (callback) => {
+    ipcRenderer.on('session-update', (event, session) => callback(session));
+    return () => ipcRenderer.removeAllListeners('session-update');
+  },
+  onSessionEnded: (callback) => {
+    ipcRenderer.on('session-ended', (event, session) => callback(session));
+    return () => ipcRenderer.removeAllListeners('session-ended');
+  },
+  onNavigate: (callback) => {
+    ipcRenderer.on('navigate', (event, route) => callback(route));
+    return () => ipcRenderer.removeAllListeners('navigate');
+  }
+});
+
+// ============================================
+// FILE: src/main/database.js
+// ============================================
+const Database = require('better-sqlite3');
+const path = require('path');
+const { format, subDays, startOfDay, endOfDay } = require('date-fns');
+
+/**
+ * @typedef {Object} Session
+ * @property {number} id - Session ID
+ * @property {string} start_time - Session start time (ISO string)
+ * @property {string|null} end_time - Session end time (ISO string)
+ * @property {number} duration - Duration in seconds
+ * @property {string} date - Session date (YYYY-MM-DD)
+ */
+
+/**
+ * @typedef {Object} DailySummary
+ * @property {number} id - Summary ID
+ * @property {string} date - Date (YYYY-MM-DD)
+ * @property {number} total_duration - Total duration in seconds
+ * @property {number} session_count - Number of sessions
+ * @property {number} average_session - Average session duration in seconds
+ */
+
+/**
+ * Database manager for screen time tracking
+ */
+class ScreenTimeDatabase {
+  /**
+   * Creates a new database instance
+   * @param {string} dbPath - Path to the SQLite database file
+   */
+  constructor(dbPath) {
+    this.dbPath = dbPath;
+    this.db = null;
+    this.initialize();
+  }
+
+  /**
+   * Initializes the database connection and creates tables
+   * @returns {void}
+   */
+  initialize() {
+    try {
+      this.db = new Database(this.dbPath);
+      this.db.pragma('journal_mode = WAL');
+      this.createTables();
+      this.runMigrations();
+      console.log('Database initialized successfully');
+    } catch (error) {
+      console.error('Failed to initialize database:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Creates the database tables
+   * @returns {void}
+   */
+  createTables() {
+    // Sessions table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        start_time TEXT NOT NULL,
+        end_time TEXT,
+        duration INTEGER DEFAULT 0,
+        date TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Daily summaries table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS daily_summaries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT UNIQUE NOT NULL,
+        total_duration INTEGER DEFAULT 0,
+        session_count INTEGER DEFAULT 0,
+        average_session INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Settings table
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Schema version table for migrations
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS schema_version (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    // Create indexes for better query performance
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date);
+      CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
+      CREATE INDEX IF NOT EXISTS idx_daily_summaries_date ON daily_summaries(date);
+    `);
+  }
+
+  /**
+   * Runs database migrations
+   * @returns {void}
+   */
+  runMigrations() {
+    const currentVersion = this.getSchemaVersion();
+    const migrations = [
+      // Migration 1: Add indexes
+      () => {
+        this.db.exec(`
+          CREATE INDEX IF NOT EXISTS idx_sessions_duration ON sessions(duration);
+        `);
+      },
+      // Migration 2: Add hourly breakdown column
+      () => {
+        try {
+          this.db.exec(`
+            ALTER TABLE daily_summaries ADD COLUMN hourly_breakdown TEXT;
+          `);
+        } catch (e) {
+          // Column might already exist
+        }
+      }
+    ];
+
+    for (let i = currentVersion; i < migrations.length; i++) {
+      try {
+        migrations[i]();
+        this.setSchemaVersion(i + 1);
+        console.log(`Applied migration ${i + 1}`);
+      } catch (error) {
+        console.error(`Failed to apply migration ${i + 1}:`, error);
+      }
+    }
+  }
+
+  /**
+   * Gets the current schema version
+   * @returns {number} Current schema version
+   */
+  getSchemaVersion() {
+    try {
+      const row = this.db.prepare('SELECT MAX(version) as version FROM schema_version').get();
+      return row?.version || 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  /**
+   * Sets the schema version
+   * @param {number} version - New schema version
+   * @returns {void}
+   */
+  setSchemaVersion(version) {
+    this.db.prepare('INSERT OR REPLACE INTO schema_version (version) VALUES (?)').run(version);
+  }
+
+  /**
+   * Starts a new session
+   * @param {Date} startTime - Session start time
+   * @returns {number} New session ID
+   */
+  startSession(startTime = new Date()) {
+    const dateStr = format(startTime, 'yyyy-MM-dd');
+    const startTimeStr = startTime.toISOString();
+
+    const result = this.db.prepare(`
+      INSERT INTO sessions (start_time, date) VALUES (?, ?)
+    `).run(startTimeStr, dateStr);
+
+    return result.lastInsertRowid;
+  }
+
+  /**
+   * Ends an active session
+   * @param {number} sessionId - Session ID to end
+   * @param {Date} endTime - Session end time
+   * @returns {Session|null} Updated session or null
+   */
+  endSession(sessionId, endTime = new Date()) {
+    const session = this.getSession(sessionId);
+    if (!session) return null;
+
+    const endTimeStr = endTime.toISOString();
+    const startTime = new Date(session.start_time);
+    const duration = Math.floor((endTime - startTime) / 1000);
+
+    this.db.prepare(`
+      UPDATE sessions 
+      SET end_time = ?, duration = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).run(endTimeStr, duration, sessionId);
+
+    // Update daily summary
+    this.updateDailySummary(session.date);
+
+    return this.getSession(sessionId);
+  }
+
+  /**
+   * Updates session duration (for active sessions)
+   * @param {number} sessionId - Session ID
+   * @param {number} duration - Current duration in seconds
+   * @returns {void}
+   */
+  updateSessionDuration(sessionId, duration) {
+    this.db.prepare(`
+      UPDATE sessions SET duration = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    `).run(duration, sessionId);
+  }
+
+  /**
+   * Gets a session by ID
+   * @param {number} sessionId - Session ID
+   * @returns {Session|null} Session object or null
+   */
+  getSession(sessionId) {
+    return this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId);
+  }
+
+  /**
+   * Gets today's sessions
+   * @returns {Session[]} Array of today's sessions
+   */
+  getTodaySessions() {
+    const today = format(new Date(), 'yyyy-MM-dd');
+    return this.db.prepare(`
+      SELECT * FROM sessions WHERE date = ? ORDER BY start_time DESC
+    `).all(today);
+  }
+
+  /**
+   * Gets sessions within a date range
+   * @param {string} startDate - Start date (YYYY-MM-DD)
+   * @param {string} endDate - End date (YYYY-MM-DD)
+   * @returns {Session[]} Array of sessions
+   */
+  getSessionsByDateRange(startDate, endDate) {
+    return this.db.prepare(`
+      SELECT * FROM sessions 
+      WHERE date >= ? AND date <= ?
+      ORDER BY start_time DESC
+    `).all(startDate, endDate);
+  }
+
+  /**
+   * Gets daily summaries within a date range
+   * @param {string} startDate - Start date (YYYY-MM-DD)
+   * @param {string} endDate - End date (YYYY-MM-DD)
+   * @returns {DailySummary[]} Array of daily summaries
+   */
+  getDailySummaries(startDate, endDate) {
+    return this.db.prepare(`
+      SELECT * FROM daily_summaries 
+      WHERE date >= ? AND date <= ?
+      ORDER BY date ASC
+    `).all(startDate, endDate);
+  }
+
+  /**
+   * Updates the daily summary for a specific date
+   * @param {string} date - Date (YYYY-MM-DD)
+   * @returns {void}
+   */
+  updateDailySummary(date) {
+    const stats = this.db.prepare(`
+      SELECT 
+        COUNT(*) as session_count,
+        COALESCE(SUM(duration), 0) as total_duration,
+        COALESCE(AVG(duration), 0) as average_session
+      FROM sessions 
+      WHERE date = ? AND end_time IS NOT NULL
+    `).get(date);
+
+    this.db.prepare(`
+      INSERT OR REPLACE INTO daily_summaries 
+      (date, total_duration, session_count, average_session, updated_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).run(date, stats.total_duration, stats.session_count, Math.floor(stats.average_session));
+  }
+
+  /**
+   * Gets statistics for a specific period
+   * @param {'day'|'week'|'month'|'year'} period - Time period
+   * @returns {Object} Statistics object
+   */
+  getStatistics(period) {
+    const now = new Date();
+    let startDate;
+
+    switch (period) {
+      case 'day':
+        startDate = format(now, 'yyyy-MM-dd');
+        break;
+      case 'week':
+        startDate = format(subDays(now, 7), 'yyyy-MM-dd');
+        break;
+      case 'month':
+        startDate = format(subDays(now, 30), 'yyyy-MM-dd');
+        break;
+      case 'year':
+        startDate = format(subDays(now, 365), 'yyyy-MM-dd');
+        break;
+      default:
+        startDate = format(now, 'yyyy-MM-dd');
+    }
+
+    const endDate = format(now, 'yyyy-MM-dd');
+
+    const stats = this.db.prepare(`
+      SELECT 
+        COUNT(*) as total_sessions,
+        COALESCE(SUM(duration), 0) as total_duration,
+        COALESCE(AVG(duration), 0) as average_session,
+        COALESCE(MAX(duration), 0) as longest_session,
+        COUNT(DISTINCT date) as active_days
+      FROM sessions 
+      WHERE date >= ? AND date <= ? AND end_time IS NOT NULL
+    `).get(startDate, endDate);
+
+    const dailyData = this.getDailySummaries(startDate, endDate);
+
+    return {
+      ...stats,
+      average_session: Math.floor(stats.average_session),
+      dailyData,
+      period,
+      startDate,
+      endDate
+    };
+  }
+
+  /**
+   * Deletes data older than specified days
+   * @param {number} days - Number of days to retain
+   * @returns {number} Number of deleted records
+   */
+  deleteOldData(days) {
+    const cutoffDate = format(subDays(new Date(), days), 'yyyy-MM-dd');
+    
+    const sessionsDeleted = this.db.prepare(`
+      DELETE FROM sessions WHERE date < ?
+    `).run(cutoffDate);
+
+    const summariesDeleted = this.db.prepare(`
+      DELETE FROM daily_summaries WHERE date < ?
+    `).run(cutoffDate);
+
+    return sessionsDeleted.changes + summariesDeleted.changes;
+  }
+
+  /**
+   * Gets a setting value
+   * @param {string} key - Setting key
+   * @param {*} defaultValue - Default value if not found
+   * @returns {*} Setting value
+   */
+  getSetting(key, defaultValue = null) {
+    const row = this.db.prepare('SELECT value FROM settings WHERE key = ?').get(key);
+    if (row) {
+      try {
+        return JSON.parse(row.value);
+      } catch {
+        return row.value;
+      }
+    }
+    return defaultValue;
+  }
+
+  /**
+   * Sets a setting value
+   * @param {string} key - Setting key
+   * @param {*} value - Setting value
+   * @returns {void}
+   */
+  setSetting(key, value) {
+    const valueStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    this.db.prepare(`
+      INSERT OR REPLACE INTO settings (key, value, updated_at) 
+      VALUES (?, ?, CURRENT_TIMESTAMP)
+    `).run(key, valueStr);
+  }
+
+  /**
+   * Closes the database connection
+   * @returns {void}
+   */
+  close() {
+    if (this.db) {
+      this.db.close();
+      console.log('Database connection closed');
+    }
+  }
+}
+
+module.exports = ScreenTimeDatabase;
+
+// ============================================
+// FILE: src/main/activityMonitor.js
+// ============================================
+const desktopIdle = require('desktop-idle');
+
+/**
+ * @typedef {Object} ActivityMonitorConfig
+ * @property {ScreenTimeDatabase} database - Database instance
+ * @property {Store} store - Electron store instance
+ * @property {Function} onSessionUpdate - Callback for session updates
+ * @property {Function} onSessionEnd - Callback when session ends
+ */
+
+/**
+ * @typedef {Object} CurrentSession
+ * @property {number} id - Session ID
+ * @property {Date} startTime - Session start time
+ * @property {number} duration - Current duration in seconds
+ */
+
+/**
+ * Activity monitor service for tracking screen time
+ */
+class ActivityMonitor {
+  /**
+   * Creates a new activity monitor
+   * @param {ActivityMonitorConfig} config - Configuration object
+   */
+  constructor(config) {
+    this.database = config.database;
+    this.store = config.store;
+    this.onSessionUpdate = config.onSessionUpdate || (() => {});
+    this.onSessionEnd = config.onSessionEnd || (() => {});
+
+    this.currentSessionId = null;
+    this.currentSessionStart = null;
+    this.monitorInterval = null;
+    this.saveInterval = null;
+    this.paused = false;
+    this.monitoring = false;
+    this.lastActivityTime = Date.now();
+
+    // Load settings
+    this.idleThreshold = this.store.get('idleThreshold', 300);
+    this.minSessionDuration = this.store.get('minSessionDuration', 60);
+    this.scheduledPauses = this.store.get('scheduledPauses', []);
+  }
+
+  /**
+   * Starts the activity monitoring
+   * @returns {void}
+   */
+  start() {
+    if (this.monitoring) return;
+
+    this.monitoring = true;
+    console.log('Activity monitoring started');
+
+    // Check for activity every second
+    this.monitorInterval = setInterval(() => {
+      this.checkActivity();
+    }, 1000);
+
+    // Save session data every 30 seconds
+    this.saveInterval = setInterval(() => {
+      this.saveCurrentSession();
+    }, 30000);
+
+    // Initial check
+    this.checkActivity();
+  }
+
+  /**
+   * Stops the activity monitoring
+   * @returns {void}
+   */
+  stop() {
+    this.monitoring = false;
+
+    if (this.monitorInterval) {
+      clearInterval(this.monitorInterval);
+      this.monitorInterval = null;
+    }
+
+    if (this.saveInterval) {
+      clearInterval(this.saveInterval);
+      this.saveInterval = null;
+    }
+
+    // End current session if active
+    if (this.currentSessionId) {
+      this.endCurrentSession();
+    }
+
+    console.log('Activity monitoring stopped');
+  }
+
+  /**
+   * Pauses the activity monitoring
+   * @returns {void}
+   */
+  pause() {
+    if (this.paused) return;
+
+    this.paused = true;
+    
+    // End current session
+    if (this.currentSessionId) {
+      this.endCurrentSession();
+    }
+
+    console.log('Activity monitoring paused');
+  }
+
+  /**
+   * Resumes the activity monitoring
+   * @returns {void}
+   */
+  resume() {
+    if (!this.paused) return;
+
+    this.paused = false;
+    this.lastActivityTime = Date.now();
+    console.log('Activity monitoring resumed');
+  }
+
+  /**
+   * Checks if monitoring is paused
+   * @returns {boolean} True if paused
+   */
+  isPaused() {
+    return this.paused;
+  }
+
+  /**
+   * Checks if monitoring is active
+   * @returns {boolean} True if monitoring
+   */
+  isMonitoring() {
+    return this.monitoring;
+  }
+
+  /**
+   * Gets the current session information
+   * @returns {CurrentSession|null} Current session or null
+   */
+  getCurrentSession() {
+    if (!this.currentSessionId || !this.currentSessionStart) {
+      return null;
+    }
+
+    const duration = Math.floor((Date.now() - this.currentSessionStart.getTime()) / 1000);
+
+    return {
+      id: this.currentSessionId,
+      startTime: this.currentSessionStart,
+      duration
+    };
+  }
+
+  /**
+   * Updates monitor settings
+   * @param {Object} settings - New settings
+   * @returns {void}
+   */
+  updateSettings(settings) {
+    if (settings.idleThreshold !== undefined) {
+      this.idleThreshold = settings.idleThreshold;
+    }
+    if (settings.minSessionDuration !== undefined) {
+      this.minSessionDuration = settings.minSessionDuration;
+    }
+    if (settings.scheduledPauses !== undefined) {
+      this.scheduledPauses = settings.scheduledPauses;
+    }
+  }
+
+  /**
+   * Checks user activity and manages sessions
+   * @returns {void}
+   */
+  checkActivity() {
+    if (this.paused) return;
+
+    // Check for scheduled pauses
+    if (this.isInScheduledPause()) {
+      if (this.currentSessionId) {
+        this.endCurrentSession();
+      }
+      return;
+    }
+
+    try {
+      const idleTime = desktopIdle.getIdleTime();
+      const isIdle = idleTime >= this.idleThreshold * 1000;
+
+      if (isIdle) {
+        // User is idle
+        if (this.currentSessionId) {
+          this.endCurrentSession();
+        }
+      } else {
+        // User is active
+        this.lastActivityTime = Date.now();
+
+        if (!this.currentSessionId) {
+          this.startNewSession();
+        } else {
+          this.updateSession();
+        }
+      }
+    } catch (error) {
+      console.error('Error checking activity:', error);
+    }
+  }
+
+  /**
+   * Checks if current time is within a scheduled pause
+   * @returns {boolean} True if in scheduled pause
+   */
+  isInScheduledPause() {
+    if (!this.scheduledPauses || this.scheduledPauses.length === 0) {
+      return false;
+    }
+
+    const now = new Date();
+    const currentTime = now.getHours() * 60 + now.getMinutes();
+    const currentDay = now.getDay();
+
+    for (const pause of this.scheduledPauses) {
+      if (!pause.enabled) continue;
+      if (pause.days && !pause.days.includes(currentDay)) continue;
+
+      const [startHour, startMin] = pause.startTime.split(':').map(Number);
+      const [endHour, endMin] = pause.endTime.split(':').map(Number);
+
+      const startMinutes = startHour * 60 + startMin;
+      const endMinutes = endHour * 60 + endMin;
+
+      if (currentTime >= startMinutes && currentTime < endMinutes) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  /**
+   * Starts a new session
+   * @returns {void}
+   */
+  startNewSession() {
+    try {
+      this.currentSessionStart = new Date();
+      this.currentSessionId = this.database.startSession(this.currentSessionStart);
+      
+      console.log(`Started new session: ${this.currentSessionId}`);
+      
+      this.onSessionUpdate(this.getCurrentSession());
+    } catch (error) {
+      console.error('Error starting session:', error);
+    }
+  }
+
+  /**
+   * Updates the current session
+   * @returns {void}
+   */
+  updateSession() {
+    if (!this.currentSessionId) return;
+
+    const session = this.getCurrentSession();
+    this.onSessionUpdate(session);
+  }
+
+  /**
+   * Saves the current session to database
+   * @returns {void}
+   */
+  saveCurrentSession() {
+    if (!this.currentSessionId || !this.currentSessionStart) return;
+
+    try {
+      const duration = Math.floor((Date.now() - this.currentSessionStart.getTime()) / 1000);
+      this.database.updateSessionDuration(this.currentSessionId, duration);
+    } catch (error) {
+      console.error('Error saving session:', error);
+    }
+  }
+
+  /**
+   * Ends the current session
+   * @returns {void}
+   */
+  endCurrentSession() {
+    if (!this.currentSessionId) return;
+
+    try {
+      const session = this.database.endSession(this.currentSessionId);
+      
+      // Check if session meets minimum duration
+      if (session && session.duration < this.minSessionDuration) {
+        // Delete short session
+        this.database.db.prepare('DELETE FROM sessions WHERE id = ?').run(this.currentSessionId);
+        console.log(`Deleted short session: ${this.currentSessionId} (${session.duration}s)`);
+      } else if (session) {
+        console.log(`Ended session: ${this.currentSessionId} (${session.duration}s)`);
+        this.onSessionEnd(session);
+      }
+
+      this.currentSessionId = null;
+      this.currentSessionStart = null;
+    } catch (error) {
+      console.error('Error ending session:', error);
+    }
+  }
+}
+
+module.exports = ActivityMonitor;
+
+// ============================================
+// FILE: src/main/exportService.js
+// ============================================
+const { jsPDF } = require('jspdf');
+require('jspdf-autotable');
+const createCsvWriter = require('csv-writer').createObjectCsvWriter;
+const { format, parseISO } = require('date-fns');
+const fs = require('fs');
+const path = require('path');
+
+/**
+ * Export service for generating PDF and CSV reports
+ */
+class ExportService {
+  /**
+   * Creates a new export service
+   * @param {ScreenTimeDatabase} database - Database instance
+   */
+  constructor(database) {
+    this.database = database;
+  }
+
+  /**
+   * Formats duration in seconds to readable string
+   * @param {number} seconds - Duration in seconds
+   * @returns {string} Formatted duration
+   */
+  formatDuration(seconds) {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+
+    const parts = [];
+    if (hours > 0) parts.push(`${hours}h`);
+    if (minutes > 0) parts.push(`${minutes}m`);
+    if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+    return parts.join(' ');
+  }
+
+  /**
+   * Exports data to PDF
+   * @param {string} startDate - Start date (YYYY-MM-DD)
+   * @param {string} endDate - End date (YYYY-MM-DD)
+   * @param {string} filePath - Output file path
+   * @returns {Promise<void>}
+   */
+  async exportToPDF(startDate, endDate, filePath) {
+    try {
+      const sessions = this.database.getSessionsByDateRange(startDate, endDate);
+      const summaries = this.database.getDailySummaries(startDate, endDate);
+
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+
+      // Title
+      doc.setFontSize(20);
+      doc.setTextColor(59, 130, 246);
+      doc.text('Screen Time Report', pageWidth / 2, 20, { align: 'center' });
+
+      // Date range
+      doc.setFontSize(12);
+      doc.setTextColor(100);
+      doc.text(`${startDate} to ${endDate}`, pageWidth / 2, 30, { align: 'center' });
+
+      // Summary statistics
+      const totalDuration = summaries.reduce((sum, s) => sum + s.total_duration, 0);
+      const totalSessions = summaries.reduce((sum, s) => sum + s.session_count, 0);
+      const avgDaily = summaries.length > 0 ? totalDuration / summaries.length : 0;
+
+      doc.setFontSize(14);
+      doc.setTextColor(0);
+      doc.text('Summary', 14, 45);
+
+      doc.setFontSize(11);
+      doc.text(`Total Screen Time: ${this.formatDuration(totalDuration)}`, 14, 55);
+      doc.text(`Total Sessions: ${totalSessions}`, 14, 62);
+      doc.text(`Average Daily Usage: ${this.formatDuration(Math.floor(avgDaily))}`, 14, 69);
+      doc.text(`Days Tracked: ${summaries.length}`, 14, 76);
+
+      // Daily summaries table
+      doc.setFontSize(14);
+      doc.text('Daily Summary', 14, 90);
+
+      const dailyTableData = summaries.map(summary => [
+        summary.date,
+        this.formatDuration(summary.total_duration),
+        summary.session_count.toString(),
+        this.formatDuration(summary.average_session)
+      ]);
+
+      doc.autoTable({
+        startY: 95,
+        head: [['Date', 'Total Time', 'Sessions', 'Avg Session']],
+        body: dailyTableData,
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 10 }
+      });
+
+      // Session details on new page
+      doc.addPage();
+      doc.setFontSize(14);
+      doc.text('Session Details', 14, 20);
+
+      const sessionTableData = sessions.map(session => [
+        session.date,
+        format(parseISO(session.start_time), 'HH:mm:ss'),
+        session.end_time ? format(parseISO(session.end_time), 'HH:mm:ss') : 'Active',
+        this.formatDuration(session.duration)
+      ]);
+
+      doc.autoTable({
+        startY: 25,
+        head: [['Date', 'Start Time', 'End Time', 'Duration']],
+        body: sessionTableData,
+        theme: 'striped',
+        headStyles: { fillColor: [59, 130, 246] },
+        styles: { fontSize: 9 }
+      });
+
+      // Footer
+      const pageCount = doc.internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150);
+        doc.text(
+          `Generated on ${format(new Date(), 'yyyy-MM-dd HH:mm:ss')} | Page ${i} of ${pageCount}`,
+          pageWidth / 2,
+          doc.internal.pageSize.getHeight() - 10,
+          { align: 'center' }
+        );
+      }
+
+      doc.save(filePath);
+      console.log(`PDF exported to: ${filePath}`);
+    } catch (error) {
+      console.error('Error exporting to PDF:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Exports data to CSV
+   * @param {string} startDate - Start date (YYYY-MM-DD)
+   * @param {string} endDate - End date (YYYY-MM-DD)
+   * @param {string} filePath - Output file path
+   * @returns {Promise<void>}
+   */
+  async exportToCSV(startDate, endDate, filePath) {
+    try {
+      const sessions = this.database.getSessionsByDateRange(startDate, endDate);
+
+      const csvWriter = createCsvWriter({
+        path: filePath,
+        header: [
+          { id: 'id', title: 'Session ID' },
+          { id: 'date', title: 'Date' },
+          { id: 'start_time', title: 'Start Time' },
+          { id: 'end_time', title: 'End Time' },
+          { id: 'duration', title: 'Duration (seconds)' },
+          { id: 'duration_formatted', title: 'Duration (formatted)' }
+        ]
+      });
+
+      const records = sessions.map(session => ({
+        id: session.id,
+        date: session.date,
+        start_time: session.start_time,
+        end_time: session.end_time || 'Active',
+        duration: session.duration,
+        duration_formatted: this.formatDuration(session.duration)
+      }));
+
+      await csvWriter.writeRecords(records);
+      console.log(`CSV exported to: ${filePath}`);
+    } catch (error) {
+      console.error('Error exporting to CSV:', error);
+      throw error;
+    }
+  }
+}
+
+module.exports = ExportService;
+
+// ============================================
+// FILE: src/renderer/index.html
+// ============================================
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Time Tracker</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/renderer/main.jsx"></script>
+</body>
+</html>
+
+// ============================================
+// FILE: src/renderer/main.jsx
+// ============================================
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import App from './App';
+import './index.css';
+
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>
+);
+
+// ============================================
+// FILE: src/renderer/index.css
+// ============================================
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-primary: #ffffff;
+  --bg-secondary: #f3f4f6;
+  --text-primary: #111827;
+  --text-secondary: #6b7280;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --border: #e5e7eb;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --error: #ef4444;
+}
+
+.dark {
+  --bg-primary: #111827;
+  --bg-secondary: #1f2937;
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --accent: #3b82f6;
+  --accent-hover: #60a5fa;
+  --border: #374151;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--text-secondary);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+// ============================================
+// FILE: src/renderer/App.jsx
+// ============================================
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, 
+  Tooltip, ResponsiveContainer, PieChart, Pie, Cell
+} from 'recharts';
+
+/**
+ * @typedef {Object} Session
+ * @property {number} id
+ * @property {string} start_time
+ * @property {string|null} end_time
+ * @property {number} duration
+ * @property {string} date
+ */
+
+/**
+ * @typedef {Object} DailySummary
+ * @property {string} date
+ * @property {number} total_duration
+ * @property {number} session_count
+ * @property {number} average_session
+ */
+
+/**
+ * @typedef {Object} Settings
+ * @property {number} idleThreshold
+ * @property {number} minSessionDuration
+ * @property {boolean} autoStart
+ * @property {boolean} darkMode
+ * @property {number} dataRetentionDays
+ * @property {Array} scheduledPauses
+ */
+
+const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+
+/**
+ * Formats duration in seconds to human-readable string
+ * @param {number} seconds - Duration in seconds
+ * @returns {string} Formatted duration
+ */
+function formatDuration(seconds) {
+  if (!seconds || seconds < 0) return '0s';
+  
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+
+  const parts = [];
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(`${minutes}m`);
+  if (secs > 0 || parts.length === 0) parts.push(`${secs}s`);
+
+  return parts.join(' ');
+}
+
+/**
+ * Formats date string for display
+ * @param {string} dateStr - Date string
+ * @returns {string} Formatted date
+ */
+function formatDate(dateStr) {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString('en-US', { 
+    weekday: 'short', 
+    month: 'short', 
+    day: 'numeric' 
+  });
+}
+
+/**
+ * Gets date string in YYYY-MM-DD format
+ * @param {Date} date - Date object
+ * @returns {string} Formatted date string
+ */
+function getDateString(date) {
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * Header component with navigation and controls
+ */
+function Header({ activeTab, setActiveTab, darkMode, toggleDarkMode, isPaused, toggleTracking }) {
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+    { id: 'sessions', label: 'Sessions', icon: '📋' },
+    { id: 'export', label: 'Export', icon: '📤' },
+    { id: 'settings', label: 'Settings', icon: '⚙️' }
+  ];
+
+  return (
+    <header className="bg-white dark:bg-gray-800 shadow-sm border-b border-gray-200 dark:border-gray-700">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between h-16">
+          <div className="flex items-center space-x-4
