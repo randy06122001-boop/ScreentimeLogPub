@@ -1,0 +1,23 @@
+screen-time-tracker/
+├── package.json
+├── electron-builder.json
+├── src/
+│   ├── main/
+│   │   ├── main.js
+│   │   ├── preload.js
+│   │   ├── database.js
+│   │   ├── activityMonitor.js
+│   │   └── exportService.js
+│   └── renderer/
+│       ├── index.html
+│       ├── index.jsx
+│       ├── App.jsx
+│       ├── components/
+│       │   ├── Dashboard.jsx
+│       │   ├── SessionList.jsx
+│       │   ├── Settings.jsx
+│       │   └── ExportPanel.jsx
+│       └── styles/
+│           └── tailwind.css
+└── assets/
+    └── icon.png
