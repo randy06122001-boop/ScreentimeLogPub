@@ -1,7 +1,3 @@
-// ============================================
-// FILE: package.json
-// ============================================
-{
   "name": "screen-time-tracker",
   "version": "1.0.0",
   "description": "A comprehensive desktop screen time tracker application",
