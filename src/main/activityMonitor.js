@@ -1,5 +1,10 @@
 const { desktopIdle } = require('desktop-idle');
-const WindowTracker = require('./windowTracker');
+let WindowTracker;
+try {
+  WindowTracker = require('./windowTracker');
+} catch (error) {
+  console.error('Failed to load window tracker:', error);
+}
 
 class ActivityMonitor {
   constructor(database, store) {
@@ -7,7 +12,7 @@ class ActivityMonitor {
     this.store = store;
     this.currentSessionId = null;
     this.monitoringInterval = null;
-    this.windowTracker = new WindowTracker();
+    this.windowTracker = WindowTracker ? new WindowTracker() : null;
     this.lastActivityTime = Date.now();
     this.lastWindowInfo = null;
     this.lastAppInfo = null;
@@ -16,6 +21,7 @@ class ActivityMonitor {
     this.idleThreshold = 300; // 5 minutes default
     this.updateInterval = 1000; // 1 second
     this.settings = {};
+    this.windowTrackingEnabled = WindowTracker ? true : false;
   }
 
   updateSettings(settings) {
@@ -30,7 +36,13 @@ class ActivityMonitor {
 
     this.loadSettings();
     this.startNewSession();
-    this.windowTracker.start();
+    try {
+      if (this.windowTracker) {
+        this.windowTracker.start();
+      }
+    } catch (error) {
+      console.error('Failed to start window tracker:', error);
+    }
     this.monitoringInterval = setInterval(() => this.tick(), this.updateInterval);
   }
 
@@ -40,7 +52,9 @@ class ActivityMonitor {
       this.monitoringInterval = null;
     }
 
-    this.windowTracker.stop();
+    if (this.windowTracker) {
+      this.windowTracker.stop();
+    }
 
     // Log final window activity if tracking
     if (this.currentSessionId && this.lastWindowStartTime) {
@@ -120,6 +134,14 @@ class ActivityMonitor {
   }
 
   trackWindowActivity() {
+    if (!this.windowTrackingEnabled) {
+      return;
+    }
+
+    if (!this.windowTracker) {
+      return;
+    }
+
     const currentWindow = this.windowTracker.getCurrentWindow();
     const currentApp = this.windowTracker.getCurrentApp();
 
