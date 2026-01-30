@@ -38,6 +38,13 @@
           </svg>
           Sessions
         </button>
+        <button class="nav-item" data-tab="apps">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 13.422V6.578a4.477 4.477 0 0 1 4.417-4.418c.942 0 1.71.748 1.71 1.71s-.748 1.71-1.71 1.71a4.487 4.487 0 0 1-4.417-4.422z"/>
+            <circle cx="12" cy="12" r="9"/>
+          </svg>
+          Apps
+        </button>
         <button class="nav-item" data-tab="reports">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="20" x2="18" y2="10"/>
@@ -158,6 +165,34 @@
             </thead>
             <tbody id="sessions-tbody">
               <tr><td colspan="5" class="no-data">No sessions found</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Apps Tab -->
+      <div id="apps-tab" class="tab">
+        <header class="tab-header">
+          <h2>Top Applications</h2>
+          <div class="date-filter">
+            <input type="date" id="apps-start-date">
+            <span>to</span>
+            <input type="date" id="apps-end-date">
+            <button id="filter-apps">Filter</button>
+          </div>
+        </header>
+
+        <div id="apps-table" class="apps-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Application</th>
+                <th>Total Time</th>
+                <th>Window Count</th>
+              </tr>
+            </thead>
+            <tbody id="apps-tbody">
+              <tr><td colspan="3" class="no-data">No data available</td></tr>
             </tbody>
           </table>
         </div>

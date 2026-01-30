@@ -1,5 +1,16 @@
 # ScreenTimeLog
-Screen time logger
+
+Cross-platform desktop screen time tracker with application and window tracking.
+
+## Features
+
+- **Session Tracking**: Automatically tracks your screen time in sessions
+- **Idle Detection**: Pauses tracking when you're away from your computer
+- **Window/App Tracking**: Tracks which applications and windows you're using
+- **Daily/Weekly/Monthly Reports**: View your screen time statistics
+- **Export Data**: Export your data to PDF or CSV
+- **Tray Icon**: Runs in the background with system tray support
+- **Auto-Launch**: Option to start automatically when you log in
 
 ## Setup Instructions
 
@@ -16,7 +27,11 @@ Screen time logger
 
 3. **Build the project:**
    ```bash
-   npm run build
+   npm run build:win  # For Windows
+   # or
+   npm run build:mac  # For macOS
+   # or
+   npm run build:linux  # For Linux
    ```
 
 4. **Run the app:**
@@ -27,76 +42,95 @@ Screen time logger
 ## Project Structure
 
 - `src/`: Contains the source code for the Electron app.
-  - `main.js`: The main process file.
-  - `renderer.js`: The renderer process file.
-  - `index.html`: The main HTML file for the app.
-  - `styles.css`: The main CSS file for the app.
-  - `components/`: Contains reusable components.
-  - `utils/`: Contains utility functions.
-- `public/`: Contains static assets.
-- `dist/`: Contains the built app files.
-- `package.json`: The project configuration file.
-- `README.md`: This file.
+  - `main.js`: The main process file
+  - `activityMonitor.js`: Handles activity monitoring and session management
+  - `windowTracker.js`: Tracks active windows and applications
+  - `database.js`: SQLite database operations
+  - `exportService.js`: Data export functionality
+  - `preload.js`: Electron preload script for secure IPC
+  - `renderer/`: Frontend code
+    - `index.html`: Main HTML
+    - `app.js`: Frontend JavaScript
+    - `styles.css`: Styling
+- `assets/`: Application icon and assets
+- `package.json`: Project configuration
 
 ## Usage
 
-1. **Start the app:**
-   ```bash
-   npm start
-   ```
+### Dashboard
+- View today's, this week's, and this month's screen time
+- See your longest session
+- View recent sessions
+- Monitor current session status
 
-2. **Log screen time:**
-   - The app will automatically log your screen time.
-   - You can also manually log screen time by clicking the "Log" button.
+### Sessions
+- View all tracked sessions with start/end times
+- Filter by date range
+- See session duration and status
 
-3. **View logs:**
-   - The app will display a list of your screen time logs.
-   - You can also view the logs in a CSV file by clicking the "Export" button.
+### Apps (NEW)
+- View top applications by usage time
+- See window count for each application
+- Filter by date range
+- Track which applications you use the most
 
-4. **Settings:**
-   - You can configure the app settings by clicking the "Settings" button.
-   - You can set the log interval, the log file path, and other options.
+### Reports
+- Export data to PDF or CSV
+- Select date range for export
+- Clear old data (older than 90 days)
 
-5. **Exit the app:**
-   - You can exit the app by clicking the "Exit" button.
-   - You can also exit the app by closing the main window.
+### Settings
+- **Idle Threshold**: Time before tracking pauses when idle (default: 5 minutes)
+- **Minimum Session Duration**: Minimum time for a session to be recorded
+- **Launch on Startup**: Automatically start when you log in
+- **Dark Mode**: Enable dark theme
+- **Data Retention**: How long to keep data (default: 365 days)
+- **Break Reminders**: Get notified to take breaks
+- **Break Interval**: Time between break reminders
+
+## Database Schema
+
+The app uses SQLite with the following tables:
+
+- **sessions**: Stores screen time sessions
+- **daily_summaries**: Daily aggregated statistics
+- **window_activity**: Individual window/app activity events
+- **app_usage**: Aggregated app usage by day
+- **settings**: Application settings
+
+## Building for Distribution
+
+### Windows
+```bash
+npm run build:win
+```
+Output: `dist/Screen Time Tracker Setup.exe`
+
+### macOS
+```bash
+npm run build:mac
+```
+Output: `dist/Screen Time Tracker.dmg`
+
+### Linux
+```bash
+npm run build:linux
+```
+Output: `dist/Screen Time Tracker.AppImage`
+
+## Privacy
+
+All data is stored locally on your computer. No data is sent to any servers. You can clear your data at any time from the Reports tab.
 
 ## Contributing
 
-1. **Fork the repository:**
-   ```bash
-   git clone https://github.com/yourusername/ScreenTimeLog.git
-   cd ScreenTimeLog
-   ```
-
-2. **Create a new branch:**
-   ```bash
-   git checkout -b my-new-feature
-   ```
-
-3. **Make your changes:**
-   - Add your new feature or fix a bug.
-   - Make sure to update the tests if necessary.
-
-4. **Commit your changes:**
-   ```bash
-   git commit -am 'Add some feature'
-   ```
-
-5. **Push your changes:**
-   ```bash
-   git push origin my-new-feature
-   ```
-
-6. **Create a pull request:**
-   - Go to the repository on GitHub.
-   - Click on the "Pull requests" tab.
-   - Click on the "New pull request" button.
-   - Select your branch and the base branch.
-   - Click on the "Create pull request" button.
-   - Fill in the pull request template.
-   - Click on the "Create pull request" button.
+1. Fork the repository
+2. Create a new branch for your feature
+3. Make your changes
+4. Commit your changes with clear messages
+5. Push to your fork
+6. Create a pull request
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see the LICENSE file for details.

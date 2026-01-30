@@ -36,12 +36,17 @@ class ScreenTimeApp {
     // Load data for specific tabs
     if (tabId === 'sessions') {
       this.loadSessions();
+    } else if (tabId === 'apps') {
+      this.loadApps();
     }
   }
 
   setupEventListeners() {
     // Sessions filter
     document.getElementById('filter-sessions').addEventListener('click', () => this.loadSessions());
+
+    // Apps filter
+    document.getElementById('filter-apps').addEventListener('click', () => this.loadApps());
 
     // Export buttons
     document.getElementById('export-pdf').addEventListener('click', () => this.exportPDF());
@@ -66,6 +71,10 @@ class ScreenTimeApp {
     // Set dates for sessions filter
     document.getElementById('session-start-date').value = startDate;
     document.getElementById('session-end-date').value = endDate;
+
+    // Set dates for apps filter
+    document.getElementById('apps-start-date').value = startDate;
+    document.getElementById('apps-end-date').value = endDate;
 
     // Set dates for export
     document.getElementById('export-start-date').value = startDate;
@@ -176,6 +185,31 @@ class ScreenTimeApp {
       `).join('');
     } catch (error) {
       console.error('Failed to load sessions:', error);
+    }
+  }
+
+  async loadApps() {
+    const startDate = document.getElementById('apps-start-date').value;
+    const endDate = document.getElementById('apps-end-date').value;
+
+    try {
+      const apps = await window.electronAPI.getAppUsageByRange({ startDate, endDate });
+
+      const tbody = document.getElementById('apps-tbody');
+      if (apps.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" class="no-data">No data available</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = apps.map(app => `
+        <tr>
+          <td><strong>${app.app_name}</strong></td>
+          <td>${this.formatDuration(app.total_seconds)}</td>
+          <td>${app.window_count}</td>
+        </tr>
+      `).join('');
+    } catch (error) {
+      console.error('Failed to load apps:', error);
     }
   }
 

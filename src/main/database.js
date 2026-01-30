@@ -36,6 +36,7 @@ class ScreenTimeDatabase {
         longest_session_seconds INTEGER DEFAULT 0,
         first_activity TEXT,
         last_activity TEXT,
+        window_activity_count INTEGER DEFAULT 0,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -45,9 +46,37 @@ class ScreenTimeDatabase {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS window_activity (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id INTEGER NOT NULL,
+        app_name TEXT NOT NULL,
+        app_path TEXT,
+        app_id TEXT NOT NULL,
+        window_title TEXT,
+        window_id TEXT,
+        start_time TEXT NOT NULL,
+        end_time TEXT,
+        duration_seconds INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS app_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        app_name TEXT NOT NULL,
+        app_id TEXT NOT NULL,
+        total_seconds INTEGER DEFAULT 0,
+        window_count INTEGER DEFAULT 0,
+        UNIQUE(date, app_id)
+      );
+
       CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
       CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date(start_time));
       CREATE INDEX IF NOT EXISTS idx_daily_summaries_date ON daily_summaries(date);
+      CREATE INDEX IF NOT EXISTS idx_window_activity_session ON window_activity(session_id);
+      CREATE INDEX IF NOT EXISTS idx_window_activity_time ON window_activity(start_time);
+      CREATE INDEX IF NOT EXISTS idx_app_usage_date ON app_usage(date);
     `);
 
     this.initializeDefaultSettings();
@@ -271,6 +300,100 @@ class ScreenTimeDatabase {
       firstActivity: stats.first_activity,
       lastActivity: stats.last_activity
     };
+  }
+
+  // Window tracking methods
+  logWindowActivity(sessionId, appInfo, windowInfo, durationSeconds) {
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      INSERT INTO window_activity (session_id, app_name, app_path, app_id, window_title, window_id, start_time, duration_seconds)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(sessionId, appInfo.name, appInfo.path || null, appInfo.id, windowInfo?.title || null, windowInfo?.id || null, now, durationSeconds);
+
+    // Update app usage for the day
+    this.updateAppUsage(now.split('T')[0], appInfo, durationSeconds);
+
+    // Update daily summary with window activity count
+    this.updateDailyWindowActivity(now.split('T')[0]);
+
+    return result.lastInsertRowid;
+  }
+
+  updateAppUsage(date, appInfo, durationSeconds) {
+    this.db.prepare(`
+      INSERT INTO app_usage (date, app_name, app_id, total_seconds, window_count)
+      VALUES (?, ?, ?, ?, 1)
+      ON CONFLICT(date, app_id) DO UPDATE SET
+        total_seconds = total_seconds + ?,
+        window_count = window_count + 1
+    `).run(date, appInfo.name, appInfo.id, durationSeconds, durationSeconds);
+  }
+
+  updateDailyWindowActivity(date) {
+    this.db.prepare(`
+      UPDATE daily_summaries
+      SET window_activity_count = (
+        SELECT COUNT(*) FROM window_activity
+        WHERE date(start_time) = ?
+      )
+      WHERE date = ?
+    `).run(date, date);
+  }
+
+  getWindowActivityBySession(sessionId) {
+    return this.db.prepare(`
+      SELECT * FROM window_activity
+      WHERE session_id = ?
+      ORDER BY start_time DESC
+    `).all(sessionId);
+  }
+
+  getAppUsageByDate(date) {
+    return this.db.prepare(`
+      SELECT * FROM app_usage
+      WHERE date = ?
+      ORDER BY total_seconds DESC
+    `).all(date);
+  }
+
+  getAppUsageByRange(startDate, endDate) {
+    return this.db.prepare(`
+      SELECT 
+        app_id,
+        app_name,
+        SUM(total_seconds) as total_seconds,
+        SUM(window_count) as window_count,
+        COUNT(DISTINCT date) as days_used
+      FROM app_usage
+      WHERE date BETWEEN ? AND ?
+      GROUP BY app_id
+      ORDER BY total_seconds DESC
+    `).all(startDate, endDate);
+  }
+
+  getTopAppsByDate(date, limit = 10) {
+    return this.db.prepare(`
+      SELECT * FROM app_usage
+      WHERE date = ?
+      ORDER BY total_seconds DESC
+      LIMIT ?
+    `).all(date, limit);
+  }
+
+  getTopAppsByRange(startDate, endDate, limit = 10) {
+    return this.db.prepare(`
+      SELECT 
+        app_id,
+        app_name,
+        SUM(total_seconds) as total_seconds,
+        SUM(window_count) as window_count,
+        COUNT(DISTINCT date) as days_used
+      FROM app_usage
+      WHERE date BETWEEN ? AND ?
+      GROUP BY app_id
+      ORDER BY total_seconds DESC
+      LIMIT ?
+    `).all(startDate, endDate, limit);
   }
 
   close() {

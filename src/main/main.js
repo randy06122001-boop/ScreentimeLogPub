@@ -132,6 +132,31 @@ function setupIpcHandlers() {
     return activityMonitor.getCurrentSession();
   });
 
+  // Window/App tracking handlers
+  ipcMain.handle('get-current-window', () => {
+    return activityMonitor.getCurrentWindowInfo();
+  });
+
+  ipcMain.handle('get-app-usage-by-date', (event, date) => {
+    return database.getAppUsageByDate(date);
+  });
+
+  ipcMain.handle('get-app-usage-by-range', (event, { startDate, endDate }) => {
+    return database.getAppUsageByRange(startDate, endDate);
+  });
+
+  ipcMain.handle('get-top-apps-by-date', (event, date, limit = 10) => {
+    return database.getTopAppsByDate(date, limit);
+  });
+
+  ipcMain.handle('get-top-apps-by-range', (event, { startDate, endDate }, limit = 10) => {
+    return database.getTopAppsByRange(startDate, endDate, limit);
+  });
+
+  ipcMain.handle('get-window-activity-by-session', (event, sessionId) => {
+    return database.getWindowActivityBySession(sessionId);
+  });
+
   // Export handlers
   ipcMain.handle('export-pdf', (event, { startDate, endDate, filename }) => {
     const sessions = database.getSessions(startDate, endDate);

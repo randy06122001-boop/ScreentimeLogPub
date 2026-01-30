@@ -12,6 +12,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getMonthlySummary: (year, month) => ipcRenderer.invoke('get-monthly-summary', year, month),
   getCurrentSession: () => ipcRenderer.invoke('get-current-session'),
   
+  // Window/App tracking
+  getCurrentWindow: () => ipcRenderer.invoke('get-current-window'),
+  getAppUsageByDate: (date) => ipcRenderer.invoke('get-app-usage-by-date', date),
+  getAppUsageByRange: (params) => ipcRenderer.invoke('get-app-usage-by-range', params),
+  getTopAppsByDate: (date, limit) => ipcRenderer.invoke('get-top-apps-by-date', date, limit),
+  getTopAppsByRange: (params, limit) => ipcRenderer.invoke('get-top-apps-by-range', params, limit),
+  getWindowActivityBySession: (sessionId) => ipcRenderer.invoke('get-window-activity-by-session', sessionId),
+  
   // Export
   exportPDF: (params) => ipcRenderer.invoke('export-pdf', params),
   exportCSV: (params) => ipcRenderer.invoke('export-csv', params),
