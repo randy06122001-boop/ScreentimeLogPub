@@ -395,7 +395,7 @@ class ScreenTimeDatabase {
     if (appLower.includes('slack') || appLower.includes('teams') || appLower.includes('discord') || appLower.includes('zoom')) {
       return 'Communication';
     }
-    if (appLower.includes('spotify') || appLower.includes('netflix') || appLower.includes('youtube') || appLower.includes('vlc'))) {
+    if (appLower.includes('spotify') || appLower.includes('netflix') || appLower.includes('youtube') || appLower.includes('vlc')) {
       return 'Entertainment';
     }
     if (appLower.includes('word') || appLower.includes('excel') || appLower.includes('powerpoint') || appLower.includes('docs')) {
