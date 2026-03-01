@@ -77,6 +77,7 @@ class ScreenTimeApp {
 
   async loadData() {
     await this.updateDashboard();
+    await this.loadTopApps();
     await this.loadSessions();
     await this.loadSettings();
   }
@@ -484,4 +485,42 @@ class ScreenTimeApp {
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   new ScreenTimeApp();
-});
+
+
+  async loadTopApps() {
+    const today = new Date().toISOString().split('T')[0];
+    const lastWeek = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+    
+    try {
+      const topApps = await window.electronAPI.getTopApps(lastWeek, today, 10);
+      this.renderTopApps(topApps);
+    } catch (error) {
+      console.error('Failed to load top apps:', error);
+    }
+  }
+
+  renderTopApps(apps) {
+    const container = document.getElementById('app-usage-chart');
+    if (!container) return;
+    
+    if (!apps || apps.length === 0) {
+      container.innerHTML = '<p class="no-data">No app usage data yet. Start using applications to see insights!</p>';
+      return;
+    }
+
+    container.innerHTML = apps.map(app => {
+      const hours = Math.floor(app.total_seconds / 3600);
+      const minutes = Math.floor((app.total_seconds % 3600) / 60);
+      const duration = hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+      
+      return `
+        <div class="app-item">
+          <div class="app-name">${app.application_name || 'Unknown'}</div>
+          <div class="app-time">${duration}</div>
+          <div class="app-sessions">${app.session_count || 0} sessions</div>
+        </div>
+      `;
+    }).join('');
+  }
+
+}
