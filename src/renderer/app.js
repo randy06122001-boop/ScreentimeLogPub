@@ -480,12 +480,6 @@ class ScreenTimeApp {
       }
     }, 1000);
   }
-}
-
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  new ScreenTimeApp();
-
 
   async loadTopApps() {
     const today = new Date().toISOString().split('T')[0];
@@ -522,5 +516,9 @@ document.addEventListener('DOMContentLoaded', () => {
       `;
     }).join('');
   }
-
 }
+
+// Initialize app when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  new ScreenTimeApp();
+});
