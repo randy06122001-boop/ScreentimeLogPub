@@ -581,3 +581,56 @@ body.dark .status-badge.inactive {
   margin-bottom: 20px;
 }
 
+
+/* App Usage Styles */
+.app-usage {
+  background: var(--bg-primary);
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  padding: 24px;
+  margin-bottom: 24px;
+}
+
+.app-usage h3 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 20px;
+  color: var(--text-primary);
+}
+
+.chart {
+  min-height: 200px;
+}
+
+.app-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.app-item:last-child {
+  border-bottom: none;
+}
+
+.app-name {
+  flex: 1;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.app-time {
+  margin: 0 20px;
+  color: var(--success-color);
+  font-weight: 600;
+  min-width: 80px;
+  text-align: right;
+}
+
+.app-sessions {
+  color: var(--accent-color);
+  font-size: 0.9em;
+  min-width: 100px;
+  text-align: right;
+}
