@@ -8,8 +8,11 @@ class ScreenTimeApp {
   async init() {
     this.setupNavigation();
     this.setupEventListeners();
+    this.setupPomodoroListeners();
     await this.loadData();
+    await this.loadPomodoroSettings();
     this.startSessionTimer();
+    this.startPomodoroPolling();
   }
 
   setupNavigation() {
@@ -354,12 +357,6 @@ class ScreenTimeApp {
     const diff = d.getDate() - day + (day === 0 ? -6 : 1);
     return new Date(d.setDate(diff));
   }
-}
-
-// Initialize app when DOM is ready
-document.addEventListener('DOMContentLoaded', () => {
-  new ScreenTimeApp();
-})
 
   // Pomodoro Timer Methods
   setupPomodoroListeners() {
@@ -483,3 +480,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }, 1000);
   }
 }
+
+// Initialize app when DOM is ready
+document.addEventListener('DOMContentLoaded', () => {
+  new ScreenTimeApp();
+});
