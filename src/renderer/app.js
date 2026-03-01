@@ -359,4 +359,127 @@ class ScreenTimeApp {
 // Initialize app when DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
   new ScreenTimeApp();
-});
+})
+
+  // Pomodoro Timer Methods
+  setupPomodoroListeners() {
+    document.getElementById('pomodoro-start-btn').addEventListener('click', () => this.startPomodoro());
+    document.getElementById('pomodoro-pause-btn').addEventListener('click', () => this.pausePomodoro());
+    document.getElementById('pomodoro-reset-btn').addEventListener('click', () => this.resetPomodoro());
+    document.getElementById('pomodoro-skip-btn').addEventListener('click', () => this.skipPomodoro());
+    document.getElementById('save-pomodoro-settings').addEventListener('click', () => this.savePomodoroSettings());
+  }
+
+  async startPomodoro() {
+    try {
+      const state = await window.electronAPI.pomodoroStart();
+      this.updatePomodoroUI(state);
+    } catch (error) {
+      console.error('Failed to start Pomodoro:', error);
+    }
+  }
+
+  async pausePomodoro() {
+    try {
+      const state = await window.electronAPI.pomodoroPause();
+      this.updatePomodoroUI(state);
+    } catch (error) {
+      console.error('Failed to pause Pomodoro:', error);
+    }
+  }
+
+  async resetPomodoro() {
+    try {
+      const state = await window.electronAPI.pomodoroReset();
+      this.updatePomodoroUI(state);
+    } catch (error) {
+      console.error('Failed to reset Pomodoro:', error);
+    }
+  }
+
+  async skipPomodoro() {
+    try {
+      const state = await window.electronAPI.pomodoroSkip();
+      this.updatePomodoroUI(state);
+    } catch (error) {
+      console.error('Failed to skip Pomodoro:', error);
+    }
+  }
+
+  updatePomodoroUI(state) {
+    const timeEl = document.getElementById('pomodoro-time');
+    const statusEl = document.getElementById('pomodoro-status');
+    const startBtn = document.getElementById('pomodoro-start-btn');
+    const pauseBtn = document.getElementById('pomodoro-pause-btn');
+    const skipBtn = document.getElementById('pomodoro-skip-btn');
+
+    // Update time display
+    const minutes = Math.floor(state.timeRemaining / 60);
+    const seconds = state.timeRemaining % 60;
+    timeEl.textContent = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+
+    // Update status
+    const statusTexts = {
+      'work': 'Focus Time',
+      'shortBreak': 'Short Break',
+      'longBreak': 'Long Break',
+      'idle': 'Ready to Focus'
+    };
+    statusEl.textContent = statusTexts[state.mode] || 'Ready';
+
+    // Update buttons
+    startBtn.disabled = state.isRunning;
+    pauseBtn.disabled = !state.isRunning;
+    skipBtn.disabled = !state.isRunning;
+
+    // Update stats
+    document.getElementById('pomodoro-sessions-today').textContent = state.sessionsToday || 0;
+    const totalMinutes = Math.floor((state.totalFocusTime || 0) / 60);
+    const hours = Math.floor(totalMinutes / 60);
+    const mins = totalMinutes % 60;
+    document.getElementById('pomodoro-total-focus').textContent = `${hours}h ${mins}m`;
+  }
+
+  async savePomodoroSettings() {
+    const settings = {
+      pomodoroWorkDuration: parseInt(document.getElementById('pomodoro-work-duration').value),
+      pomodoroShortBreakDuration: parseInt(document.getElementById('pomodoro-short-break').value),
+      pomodoroLongBreakDuration: parseInt(document.getElementById('pomodoro-long-break').value),
+      pomodoroSessionsBeforeLongBreak: parseInt(document.getElementById('pomodoro-sessions-count').value)
+    };
+
+    try {
+      await window.electronAPI.pomodoroUpdateSettings(settings);
+      alert('Pomodoro settings saved!');
+    } catch (error) {
+      console.error('Failed to save Pomodoro settings:', error);
+      alert('Failed to save settings');
+    }
+  }
+
+  async loadPomodoroSettings() {
+    try {
+      const settings = await window.electronAPI.getSettings();
+      if (settings) {
+        document.getElementById('pomodoro-work-duration').value = settings.pomodoroWorkDuration || 25;
+        document.getElementById('pomodoro-short-break').value = settings.pomodoroShortBreakDuration || 5;
+        document.getElementById('pomodoro-long-break').value = settings.pomodoroLongBreakDuration || 15;
+        document.getElementById('pomodoro-sessions-count').value = settings.pomodoroSessionsBeforeLongBreak || 4;
+      }
+    } catch (error) {
+      console.error('Failed to load Pomodoro settings:', error);
+    }
+  }
+
+  startPomodoroPolling() {
+    // Update Pomodoro state every second
+    setInterval(async () => {
+      try {
+        const state = await window.electronAPI.pomodoroGetState();
+        this.updatePomodoroUI(state);
+      } catch (error) {
+        console.error('Failed to get Pomodoro state:', error);
+      }
+    }, 1000);
+  }
+}
