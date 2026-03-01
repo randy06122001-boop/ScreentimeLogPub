@@ -1,4 +1,10 @@
-const { desktopIdle } = require('desktop-idle');
+// Try to load desktop-idle, but make it optional
+let desktopIdle = null;
+try {
+  desktopIdle = require('desktop-idle');
+} catch (error) {
+  console.warn('desktop-idle not available, using fallback idle detection');
+}
 
 class ActivityMonitor {
   constructor(database, store) {
@@ -7,10 +13,12 @@ class ActivityMonitor {
     this.currentSessionId = null;
     this.monitoringInterval = null;
     this.lastActivityTime = Date.now();
+    this.lastMousePosition = { x: 0, y: 0 };
     this.isPaused = false;
     this.idleThreshold = 300; // 5 minutes default
     this.updateInterval = 1000; // 1 second
     this.settings = {};
+    this.isRunning = false;
   }
 
   updateSettings(settings) {
@@ -23,12 +31,14 @@ class ActivityMonitor {
       return;
     }
 
+    this.isRunning = true;
     this.loadSettings();
     this.startNewSession();
     this.monitoringInterval = setInterval(() => this.tick(), this.updateInterval);
   }
 
   stop() {
+    this.isRunning = false;
     if (this.monitoringInterval) {
       clearInterval(this.monitoringInterval);
       this.monitoringInterval = null;
@@ -63,33 +73,52 @@ class ActivityMonitor {
     }
   }
 
+  getIdleTime() {
+    // Use desktop-idle if available
+    if (desktopIdle) {
+      try {
+        return desktopIdle.getIdleTime();
+      } catch (error) {
+        console.warn('desktop-idle failed, using fallback');
+      }
+    }
+    
+    // Fallback: assume user is active (0 idle time)
+    // This means sessions will continue indefinitely until manually stopped
+    return 0;
+  }
+
   tick() {
-    if (this.isPaused) {
+    if (!this.isRunning || this.isPaused) {
       return;
     }
 
-    const idleTime = desktopIdle.getIdleTime();
-    const now = Date.now();
+    try {
+      const idleTime = this.getIdleTime();
+      const now = Date.now();
 
-    // Check if user has been idle beyond threshold
-    if (idleTime > this.idleThreshold * 1000) {
-      if (this.currentSessionId) {
-        this.endCurrentSession();
+      // Check if user has been idle beyond threshold
+      if (idleTime > this.idleThreshold) {
+        if (this.currentSessionId) {
+          this.endCurrentSession();
+        }
+      } else if (this.currentSessionId) {
+        // Update session duration
+        const session = this.database.getSessionById(this.currentSessionId);
+        if (session) {
+          const startTime = new Date(session.start_time);
+          const duration = Math.floor((now - startTime.getTime()) / 1000);
+          this.database.updateSession(this.currentSessionId, duration);
+        }
+      } else {
+        // User came back from idle, start new session
+        this.startNewSession();
       }
-    } else if (this.currentSessionId) {
-      // Update session duration
-      const session = this.database.getSessionById(this.currentSessionId);
-      if (session) {
-        const startTime = new Date(session.start_time);
-        const duration = Math.floor((now - startTime.getTime()) / 1000);
-        this.database.updateSession(this.currentSessionId, duration);
-      }
-    } else {
-      // User came back from idle, start new session
-      this.startNewSession();
+
+      this.lastActivityTime = now;
+    } catch (error) {
+      console.error('Error in activity monitor tick:', error);
     }
-
-    this.lastActivityTime = now;
   }
 
   startNewSession() {
