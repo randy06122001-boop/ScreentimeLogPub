@@ -20,6 +20,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   clearData: (params) => ipcRenderer.invoke('clear-data', params),
   getStats: () => ipcRenderer.invoke('get-stats'),
   
+  // App usage
+  getAppUsageByDate: (date) => ipcRenderer.invoke('get-app-usage-by-date', date),
+  getAppUsageByCategory: (startDate, endDate) => ipcRenderer.invoke('get-app-usage-by-category', { startDate, endDate }),
+  getTopApps: (startDate, endDate, limit) => ipcRenderer.invoke('get-top-apps', { startDate, endDate, limit }),
+  
+  // Categories
+  getAllCategories: () => ipcRenderer.invoke('get-all-categories'),
+  addCategory: (name, color, applications) => ipcRenderer.invoke('add-category', { name, color, applications }),
+  updateCategory: (categoryId, name, color, applications) => ipcRenderer.invoke('update-category', { categoryId, name, color, applications }),
+  deleteCategory: (categoryId) => ipcRenderer.invoke('delete-category', categoryId),
+  
   // Listeners
   onSessionUpdate: (callback) => {
     const listener = (event, data) => callback(data);

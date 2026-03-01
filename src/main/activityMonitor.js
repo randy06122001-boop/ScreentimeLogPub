@@ -1,9 +1,16 @@
-// Try to load desktop-idle, but make it optional
+// Try to load optional dependencies
 let desktopIdle = null;
 try {
   desktopIdle = require('desktop-idle');
-} catch (error) {
-  console.warn('desktop-idle not available, using fallback idle detection');
+} catch (e) {
+  console.log('desktop-idle not available, using fallback');
+}
+
+let activeWin = null;
+try {
+  activeWin = require('active-win');
+} catch (e) {
+  console.log('active-win not available, window tracking disabled');
 }
 
 class ActivityMonitor {
@@ -13,12 +20,17 @@ class ActivityMonitor {
     this.currentSessionId = null;
     this.monitoringInterval = null;
     this.lastActivityTime = Date.now();
-    this.lastMousePosition = { x: 0, y: 0 };
     this.isPaused = false;
     this.idleThreshold = 300; // 5 minutes default
     this.updateInterval = 1000; // 1 second
     this.settings = {};
     this.isRunning = false;
+    
+    // App tracking
+    this.currentAppName = '';
+    this.currentWindowTitle = '';
+    this.lastAppCheck = 0;
+    this.appCheckInterval = 2000; // Check active window every 2 seconds
   }
 
   updateSettings(settings) {
@@ -31,8 +43,8 @@ class ActivityMonitor {
       return;
     }
 
-    this.isRunning = true;
     this.loadSettings();
+    this.isRunning = true;
     this.startNewSession();
     this.monitoringInterval = setInterval(() => this.tick(), this.updateInterval);
   }
@@ -73,46 +85,59 @@ class ActivityMonitor {
     }
   }
 
-  getIdleTime() {
-    // Use desktop-idle if available
-    if (desktopIdle) {
-      try {
-        return desktopIdle.getIdleTime();
-      } catch (error) {
-        console.warn('desktop-idle failed, using fallback');
-      }
-    }
-    
-    // Fallback: assume user is active (0 idle time)
-    // This means sessions will continue indefinitely until manually stopped
-    return 0;
-  }
-
-  tick() {
+  async tick() {
     if (!this.isRunning || this.isPaused) {
       return;
     }
 
     try {
-      const idleTime = this.getIdleTime();
-      const now = Date.now();
+      let idleTime = 0;
+      if (desktopIdle) {
+        idleTime = desktopIdle.getIdleTime();
+      }
 
-      // Check if user has been idle beyond threshold
-      if (idleTime > this.idleThreshold) {
-        if (this.currentSessionId) {
-          this.endCurrentSession();
+      // Get active window info periodically
+      const now = Date.now();
+      if (activeWin && (now - this.lastAppCheck > this.appCheckInterval)) {
+        try {
+          const activeWindow = await activeWin();
+          if (activeWindow) {
+            const newAppName = activeWindow.owner.name || '';
+            const newWindowTitle = activeWindow.title || '';
+            
+            // Check if window changed
+            if (newAppName !== this.currentAppName || newWindowTitle !== this.currentWindowTitle) {
+              // End current session and start new one with new app info
+              if (this.currentSessionId) {
+                this.endCurrentSession();
+              }
+              
+              this.currentAppName = newAppName;
+              this.currentWindowTitle = newWindowTitle;
+              this.startNewSession();
+            }
+          }
+        } catch (err) {
+          // Fallback if active-win fails
         }
-      } else if (this.currentSessionId) {
-        // Update session duration
+        this.lastAppCheck = now;
+      }
+
+      // Update session duration
+      if (this.currentSessionId) {
         const session = this.database.getSessionById(this.currentSessionId);
         if (session) {
           const startTime = new Date(session.start_time);
           const duration = Math.floor((now - startTime.getTime()) / 1000);
           this.database.updateSession(this.currentSessionId, duration);
         }
-      } else {
-        // User came back from idle, start new session
-        this.startNewSession();
+      }
+
+      // Check if user has been idle beyond threshold
+      if (idleTime > this.idleThreshold) {
+        if (this.currentSessionId) {
+          this.endCurrentSession();
+        }
       }
 
       this.lastActivityTime = now;
@@ -125,7 +150,15 @@ class ActivityMonitor {
     try {
       const session = this.database.startSession();
       this.currentSessionId = session.id;
-      console.log('Started session:', session.id);
+      
+      // Record app usage if we have app info
+      if (this.currentAppName) {
+        const today = new Date().toISOString().split('T')[0];
+        const category = this.database.categorizeApp(this.currentAppName);
+        this.database.recordAppUsage(today, this.currentAppName, this.currentWindowTitle, category, 0);
+      }
+      
+      console.log('Started session:', session.id, 'App:', this.currentAppName || 'Unknown');
     } catch (error) {
       console.error('Failed to start session:', error);
     }
@@ -138,6 +171,17 @@ class ActivityMonitor {
 
     try {
       const result = this.database.endSession(this.currentSessionId);
+      
+      // Update app usage with final duration
+      if (result && this.currentAppName) {
+        const session = this.database.getSessionById(this.currentSessionId);
+        if (session) {
+          const date = session.start_time.split('T')[0];
+          const category = this.database.categorizeApp(this.currentAppName);
+          this.database.recordAppUsage(date, this.currentAppName, this.currentWindowTitle, category, result.durationSeconds);
+        }
+      }
+      
       console.log('Ended session:', result);
       this.currentSessionId = null;
     } catch (error) {
@@ -161,7 +205,9 @@ class ActivityMonitor {
           id: session.id,
           startTime: session.start_time,
           duration: duration,
-          isActive: true
+          isActive: true,
+          appName: this.currentAppName,
+          windowTitle: this.currentWindowTitle
         };
       }
     } catch (error) {

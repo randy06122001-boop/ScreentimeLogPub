@@ -153,6 +153,39 @@ function setupIpcHandlers() {
   ipcMain.handle('get-stats', () => {
     return database.getOverallStats();
   });
+
+  // App usage handlers
+  ipcMain.handle('get-app-usage-by-date', (event, date) => {
+    return database.getAppUsageByDate(date);
+  });
+
+  ipcMain.handle('get-app-usage-by-category', (event, { startDate, endDate }) => {
+    return database.getAppUsageByCategory(startDate, endDate);
+  });
+
+  ipcMain.handle('get-top-apps', (event, { startDate, endDate, limit }) => {
+    return database.getTopApps(startDate, endDate, limit || 10);
+  });
+
+  // Category handlers
+  ipcMain.handle('get-all-categories', () => {
+    return database.getAllCategories();
+  });
+
+  ipcMain.handle('add-category', (event, { name, color, applications }) => {
+    database.addCategory(name, color, applications);
+    return { success: true };
+  });
+
+  ipcMain.handle('update-category', (event, { categoryId, name, color, applications }) => {
+    database.updateCategory(categoryId, name, color, applications);
+    return { success: true };
+  });
+
+  ipcMain.handle('delete-category', (event, categoryId) => {
+    database.deleteCategory(categoryId);
+    return { success: true };
+  });
 }
 
 app.whenReady().then(() => {
