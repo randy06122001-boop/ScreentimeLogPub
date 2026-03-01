@@ -156,6 +156,60 @@ function setupIpcHandlers() {
     return database.getOverallStats();
   });
 
+  // Pomodoro handlers
+  ipcMain.handle('pomodoro-start', () => {
+    if (!pomodoroTimer) {
+      pomodoroTimer = new PomodoroTimer();
+    }
+    const settings = database.getSettings();
+    const settingsObj = {};
+    settings.forEach(setting => {
+      let value = setting.value;
+      if (value === 'true') value = true;
+      else if (value === 'false') value = false;
+      else if (!isNaN(value) && value !== '') value = Number(value);
+      settingsObj[setting.key] = value;
+    });
+    pomodoroTimer.updateSettings(settingsObj);
+    return pomodoroTimer.start();
+  });
+
+  ipcMain.handle('pomodoro-pause', () => {
+    if (!pomodoroTimer) {
+      pomodoroTimer = new PomodoroTimer();
+    }
+    return pomodoroTimer.pause();
+  });
+
+  ipcMain.handle('pomodoro-reset', () => {
+    if (!pomodoroTimer) {
+      pomodoroTimer = new PomodoroTimer();
+    }
+    return pomodoroTimer.reset();
+  });
+
+  ipcMain.handle('pomodoro-skip', () => {
+    if (!pomodoroTimer) {
+      pomodoroTimer = new PomodoroTimer();
+    }
+    return pomodoroTimer.skip();
+  });
+
+  ipcMain.handle('pomodoro-get-state', () => {
+    if (!pomodoroTimer) {
+      pomodoroTimer = new PomodoroTimer();
+    }
+    return pomodoroTimer.getState();
+  });
+
+  ipcMain.handle('pomodoro-update-settings', (event, settings) => {
+    if (!pomodoroTimer) {
+      pomodoroTimer = new PomodoroTimer();
+    }
+    pomodoroTimer.updateSettings(settings);
+    return { success: true };
+  });
+
   // App usage handlers
   ipcMain.handle('get-app-usage-by-date', (event, date) => {
     return database.getAppUsageByDate(date);
