@@ -5,12 +5,14 @@ const Store = require('electron-store');
 const Database = require('./database');
 const ActivityMonitor = require('./activityMonitor');
 const ExportService = require('./exportService');
+const PomodoroTimer = require('./pomodoro');
 
 let mainWindow;
 let tray;
 let activityMonitor;
 let database;
 let exportService;
+let pomodoroTimer;
 const store = new Store();
 
 const autoLauncher = new AutoLaunch({
@@ -191,6 +193,7 @@ function setupIpcHandlers() {
 app.whenReady().then(() => {
   database = new Database(app.getPath('userData'));
   exportService = new ExportService(app.getPath('documents'));
+  pomodoroTimer = new PomodoroTimer();
   activityMonitor = new ActivityMonitor(database, store);
 
   createWindow();

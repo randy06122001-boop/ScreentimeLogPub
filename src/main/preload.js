@@ -31,6 +31,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateCategory: (categoryId, name, color, applications) => ipcRenderer.invoke('update-category', { categoryId, name, color, applications }),
   deleteCategory: (categoryId) => ipcRenderer.invoke('delete-category', categoryId),
   
+
+  // Pomodoro Timer
+  pomodoroStart: () => ipcRenderer.invoke('pomodoro-start'),
+  pomodoroPause: () => ipcRenderer.invoke('pomodoro-pause'),
+  pomodoroReset: () => ipcRenderer.invoke('pomodoro-reset'),
+  pomodoroSkip: () => ipcRenderer.invoke('pomodoro-skip'),
+  pomodoroGetState: () => ipcRenderer.invoke('pomodoro-get-state'),
+  pomodoroUpdateSettings: (settings) => ipcRenderer.invoke('pomodoro-update-settings', settings),
   // Listeners
   onSessionUpdate: (callback) => {
     const listener = (event, data) => callback(data);

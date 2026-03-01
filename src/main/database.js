@@ -82,7 +82,11 @@ class ScreenTimeDatabase {
       darkMode: false,
       scheduledBreaks: JSON.stringify([]),
       breakReminderEnabled: true,
-      breakIntervalMinutes: 60
+      breakIntervalMinutes: 60,
+      pomodoroWorkDuration: 25,
+      pomodoroShortBreakDuration: 5,
+      pomodoroLongBreakDuration: 15,
+      pomodoroSessionsBeforeLongBreak: 4
     };
 
     const insert = this.db.prepare(`
