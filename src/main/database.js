@@ -45,9 +45,29 @@ class ScreenTimeDatabase {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       );
 
+      CREATE TABLE IF NOT EXISTS app_usage (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        date TEXT NOT NULL,
+        application_name TEXT NOT NULL,
+        window_title TEXT,
+        category TEXT NOT NULL DEFAULT 'Other',
+        total_seconds INTEGER DEFAULT 0,
+        session_count INTEGER DEFAULT 0,
+        UNIQUE(date, application_name, category)
+      );
+
+      CREATE TABLE IF NOT EXISTS categories (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        color TEXT DEFAULT '#3b82f6',
+        applications TEXT
+      );
+
       CREATE INDEX IF NOT EXISTS idx_sessions_start_time ON sessions(start_time);
       CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(date(start_time));
       CREATE INDEX IF NOT EXISTS idx_daily_summaries_date ON daily_summaries(date);
+      CREATE INDEX IF NOT EXISTS idx_app_usage_date ON app_usage(date);
+      CREATE INDEX IF NOT EXISTS idx_app_usage_category ON app_usage(category);
     `);
 
     this.initializeDefaultSettings();
@@ -271,6 +291,118 @@ class ScreenTimeDatabase {
       firstActivity: stats.first_activity,
       lastActivity: stats.last_activity
     };
+  }
+
+  // App Usage Methods
+  recordAppUsage(date, appName, windowTitle, category, durationSeconds) {
+    const stmt = this.db.prepare(`
+      INSERT INTO app_usage (date, application_name, window_title, category, total_seconds, session_count)
+      VALUES (?, ?, ?, ?, ?, 1)
+      ON CONFLICT(date, application_name, category) DO UPDATE SET
+        total_seconds = total_seconds + ?,
+        session_count = session_count + 1,
+        window_title = ?
+    `);
+    
+    stmt.run(date, appName, windowTitle, category, durationSeconds, durationSeconds, windowTitle);
+  }
+
+  getAppUsageByDate(date) {
+    return this.db.prepare(`
+      SELECT * FROM app_usage 
+      WHERE date = ?
+      ORDER BY total_seconds DESC
+    `).all(date);
+  }
+
+  getAppUsageByCategory(startDate, endDate) {
+    return this.db.prepare(`
+      SELECT 
+        category,
+        SUM(total_seconds) as total_seconds,
+        SUM(session_count) as session_count
+      FROM app_usage
+      WHERE date BETWEEN ? AND ?
+      GROUP BY category
+      ORDER BY total_seconds DESC
+    `).all(startDate, endDate);
+  }
+
+  getTopApps(startDate, endDate, limit = 10) {
+    return this.db.prepare(`
+      SELECT 
+        application_name,
+        category,
+        SUM(total_seconds) as total_seconds,
+        SUM(session_count) as session_count
+      FROM app_usage
+      WHERE date BETWEEN ? AND ?
+      GROUP BY application_name
+      ORDER BY total_seconds DESC
+      LIMIT ?
+    `).all(startDate, endDate, limit);
+  }
+
+  // Category Management
+  getAllCategories() {
+    return this.db.prepare(`
+      SELECT * FROM categories ORDER BY name
+    `).all();
+  }
+
+  addCategory(name, color, applications) {
+    const stmt = this.db.prepare(`
+      INSERT INTO categories (name, color, applications)
+      VALUES (?, ?, ?)
+    `);
+    
+    stmt.run(name, color, JSON.stringify(applications || []));
+  }
+
+  updateCategory(categoryId, name, color, applications) {
+    const stmt = this.db.prepare(`
+      UPDATE categories 
+      SET name = ?, color = ?, applications = ?
+      WHERE id = ?
+    `);
+    
+    stmt.run(name, color, JSON.stringify(applications || []), categoryId);
+  }
+
+  deleteCategory(categoryId) {
+    this.db.prepare(`DELETE FROM categories WHERE id = ?`).run(categoryId);
+  }
+
+  categorizeApp(appName) {
+    // Check if app is in any category
+    const categories = this.getAllCategories();
+    
+    for (const category of categories) {
+      const apps = JSON.parse(category.applications || '[]');
+      if (apps.some(app => appName.toLowerCase().includes(app.toLowerCase()))) {
+        return category.name;
+      }
+    }
+    
+    // Default categorization
+    const appLower = appName.toLowerCase();
+    if (appLower.includes('chrome') || appLower.includes('firefox') || appLower.includes('edge') || appLower.includes('safari')) {
+      return 'Browsing';
+    }
+    if (appLower.includes('code') || appLower.includes('vscode') || appLower.includes('atom') || appLower.includes('sublime')) {
+      return 'Development';
+    }
+    if (appLower.includes('slack') || appLower.includes('teams') || appLower.includes('discord') || appLower.includes('zoom')) {
+      return 'Communication';
+    }
+    if (appLower.includes('spotify') || appLower.includes('netflix') || appLower.includes('youtube') || appLower.includes('vlc'))) {
+      return 'Entertainment';
+    }
+    if (appLower.includes('word') || appLower.includes('excel') || appLower.includes('powerpoint') || appLower.includes('docs')) {
+      return 'Productivity';
+    }
+    
+    return 'Other';
   }
 
   close() {

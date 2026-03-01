@@ -19,7 +19,8 @@
     "jspdf-autotable": "^3.8.4"
   },
   "optionalDependencies": {
-    "desktop-idle": "^1.3.0"
+    "desktop-idle": "^1.3.0",
+    "active-win": "^8.2.1"
   },
   "devDependencies": {
     "autoprefixer": "^10.4.17",
