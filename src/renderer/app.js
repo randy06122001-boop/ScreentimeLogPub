@@ -52,6 +52,7 @@ class ScreenTimeApp {
 
     // Clear old data
     document.getElementById('clear-old-data').addEventListener('click', () => this.clearOldData());
+    document.getElementById('clear-all-data').addEventListener('click', () => this.clearAllData());
 
     // Save settings
     document.getElementById('save-settings').addEventListener('click', () => this.saveSettings());
@@ -317,6 +318,29 @@ class ScreenTimeApp {
     } catch (error) {
       console.error('Failed to clear old data:', error);
       alert('Failed to clear old data. Please try again.');
+    }
+  }
+
+  async clearAllData() {
+    if (!confirm('Are you sure you want to clear ALL data? This will permanently delete all your tracking history. This action cannot be undone.')) {
+      return;
+    }
+
+    if (!confirm('This is your last warning! All screen time data will be permanently deleted. Continue?')) {
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.clearAllData();
+      if (result.success) {
+        alert('All data cleared successfully!');
+        await this.loadData();
+      } else {
+        alert('Failed to clear data. Please try again.');
+      }
+    } catch (error) {
+      console.error('Failed to clear all data:', error);
+      alert('Failed to clear all data. Please try again.');
     }
   }
 

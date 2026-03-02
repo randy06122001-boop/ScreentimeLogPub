@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   // Data management
   clearData: (params) => ipcRenderer.invoke('clear-data', params),
+  clearAllData: () => ipcRenderer.invoke('clear-all-data'),
   getStats: () => ipcRenderer.invoke('get-stats'),
   
   // App usage
