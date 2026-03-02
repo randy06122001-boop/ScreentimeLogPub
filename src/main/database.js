@@ -277,6 +277,13 @@ class ScreenTimeDatabase {
     return { success: true };
   }
 
+  clearAllData() {
+    this.db.prepare(`DELETE FROM sessions`).run();
+    this.db.prepare(`DELETE FROM daily_summaries`).run();
+    this.db.prepare(`DELETE FROM app_usage`).run();
+    return { success: true };
+  }
+
   getOverallStats() {
     const stats = this.db.prepare(`
       SELECT 

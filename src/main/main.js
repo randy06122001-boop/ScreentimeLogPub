@@ -152,6 +152,11 @@ function setupIpcHandlers() {
     return result;
   });
 
+  ipcMain.handle('clear-all-data', () => {
+    const result = database.clearAllData();
+    return result;
+  });
+
   ipcMain.handle('get-stats', () => {
     return database.getOverallStats();
   });
