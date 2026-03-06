@@ -165,5 +165,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 See [Releases](https://github.com/randy06122001-boop/ScreenTimeLog/releases) for full version history.
 
 ---
-
-Made with ❤️ for productivity enthusiasts
