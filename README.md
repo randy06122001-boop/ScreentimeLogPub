@@ -151,17 +151,3 @@ The app uses SQLite with the following tables:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## Changelog
-
-### v5.3.0
-- Added Clear All Data feature with double confirmation
-- Added Pomodoro Timer with customizable settings
-- Added App Usage Insights dashboard
-- Added Category Management
-- Added .gitignore for proper build artifact exclusion
-- Bug fixes and UI improvements
-
-### Previous Versions
-See [Releases](https://github.com/randy06122001-boop/ScreenTimeLog/releases) for full version history.
-
----
